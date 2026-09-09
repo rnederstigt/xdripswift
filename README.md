@@ -1,5 +1,22 @@
 # xDrip4iOS
 
+## Experimental Direct Libre 2 connection to Apple Watch
+
+This branch adds a **phone-controlled, foreground proof of concept** for switching a Libre 2 Bluetooth connection between xDrip on iPhone and its companion Apple Watch app.
+
+- All controls are in **Settings → Advanced Settings → Direct Libre (Experimental)** on iPhone.
+- One button switches to Watch or back to iPhone. The page includes a readiness checklist, connection verification, explicit NFC reclaim and recent activity.
+- In Direct Watch mode, an antenna before the reading age is green when connected with fresh direct glucose, or grey when waiting, disconnected or stale.
+- Start with xDrip already receiving valid Libre BLE readings. Build matching iPhone and Watch apps from this branch and keep them open during testing.
+
+See the **[setup, switching workflow, architecture and device test checklist](Documentation/PhoneControlledLibreWatch.md)** before trying the experiment. This is a foreground prototype: continuous background collection, Watch alarms and direct-reading upload/backfill to the phone are not implemented. NFC reclaim reprovisions sensor credentials and may disrupt other apps' connections or alarms.
+
+Validation performed during development: **39 host tests passed**, plus iPhone and Watch SDK source checks. Full signed builds and the device acceptance sequence are not covered by those automated checks.
+
+The upstream xDrip4iOS introduction follows below.
+
+---
+
 **[Online documentation: compatibility, installation, setup and troubleshooting](https://xdrip4ios.readthedocs.io/en/latest/)**
 
 xDrip4iOS (`xdripswift`) is a community-developed, open-source iOS app for displaying and managing real-time continuous glucose monitor (CGM) data. It can connect directly to a compatible CGM in **Master** mode or retrieve remote readings from an online service in **Follower** mode.
