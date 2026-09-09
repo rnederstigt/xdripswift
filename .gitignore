@@ -122,3 +122,14 @@ xdripswift.wiki/
 commit.txt
 
 *.bak
+
+# Local proof-of-concept test/build products
+/.build/
+/build/
+/DerivedData/
+
+# Machine-specific Swift bridging-header cache
+/*-swift_*-clang_*.pch
+
+# Personal signing and provisioning overrides
+/xDrip/xDripOverride.xcconfig

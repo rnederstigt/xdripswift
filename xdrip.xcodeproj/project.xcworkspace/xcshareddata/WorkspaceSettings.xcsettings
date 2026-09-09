@@ -4,5 +4,9 @@
 <dict>
 	<key>PreviewsEnabled</key>
 	<false/>
+	<key>BuildLocationStyle</key>
+	<string>UseAppPreferences</string>
+	<key>DerivedDataLocationStyle</key>
+	<string>Default</string>
 </dict>
 </plist>
