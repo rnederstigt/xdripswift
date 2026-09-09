@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 fileprivate enum Setting:Int, CaseIterable {
 
@@ -91,6 +92,12 @@ class SettingsViewDevelopmentSettingsViewModel: NSObject, SettingsViewModelProto
         }
 
         let advancedRows = [
+            SettingsRow(
+                id: "developer.directLibre",
+                title: Texts_DirectLibre.experimentTitle,
+                accessory: .none,
+                control: .custom { AnyView(Libre2PhoneSettingsLink()) }
+            ),
             nativeSettingsRow(id: "developer.showDeveloperSettings", index: Setting.showDeveloperSettings.rawValue, sectionID: sectionID),
             SettingsRow(
                 id: "developer.issueReport",

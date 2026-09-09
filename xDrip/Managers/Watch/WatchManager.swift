@@ -372,6 +372,11 @@ final class WatchManager: NSObject, ObservableObject, @unchecked Sendable {
 // MARK: - conform to WCSessionDelegate protocol
 
 extension WatchManager: WCSessionDelegate {
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
+        guard message[Libre2HandoffMessage.key] != nil else { replyHandler([:]); return }
+        DispatchQueue.main.async { Libre2PhoneHandoff.shared.receive(message, reply: replyHandler) }
+    }
+
     func sessionDidBecomeInactive(_: WCSession) {}
 
     func sessionDidDeactivate(_: WCSession) {
@@ -437,6 +442,7 @@ extension WatchManager: WCSessionDelegate {
     func session(_: WCSession, didReceiveMessageData _: Data) {}
 
     func sessionReachabilityDidChange(_ session: WCSession) {
+        DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
         if session.isReachable {
             DispatchQueue.main.async {
                 self.processWatchUpdate(updateTypes: [.status, .bgReadings], forceComplicationUpdate: false)

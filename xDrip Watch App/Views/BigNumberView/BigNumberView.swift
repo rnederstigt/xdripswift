@@ -98,11 +98,8 @@ struct BigNumberView: View {
             }
             
             HStack(alignment: .center, spacing: 3) {
-                Image(systemName: ConstantsAppleWatch.requestingDataIconSFSymbolName)
-                    .font(.system(size: ConstantsAppleWatch.requestingDataIconFontSize, weight: .heavy))
-                    .foregroundStyle(watchState.requestingDataIconColor)
-                    .padding(.top, 4)
-                    .padding(.trailing, 2)
+                Libre2SourceStatusView()
+                    .font(.system(size: isSmallScreen ? 14 : 16))
                 
                 Text(watchState.lastUpdatedMinsAgoString())
                     .font(.system(size: isSmallScreen ? 20 : 22))

@@ -22,11 +22,8 @@ struct MainViewInfoView: View {
         let textSize: CGFloat = isSmallScreen ? 14 : 16
         
         HStack(alignment: .center, spacing: 3) {
-            Image(systemName: ConstantsAppleWatch.requestingDataIconSFSymbolName)
-                .font(.system(size: ConstantsAppleWatch.requestingDataIconFontSize, weight: .heavy))
-                .foregroundStyle(watchState.requestingDataIconColor)
-                .padding(.top, 4)
-                .padding(.trailing, 2)
+            Libre2SourceStatusView()
+                .font(.system(size: textSize))
             
             Text(watchState.lastUpdatedMinsAgoString())
                 .font(.system(size: textSize))
