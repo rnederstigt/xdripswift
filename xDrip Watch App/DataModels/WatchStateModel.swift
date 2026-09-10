@@ -73,14 +73,7 @@ final class WatchStateModel: NSObject, ObservableObject {
 
     /// the Watch Connectivity session
     var session: WCSession
-    let directLibre = Libre2WatchHandoff()
-    @Published var directLibreStatus = Texts_DirectLibre.phoneRelay
-    @Published private var glucoseSource: WatchGlucoseSource = .phoneRelay
-
-    var glucoseSourceStatus: String {
-        let stale = bgReadingDate().map { Date().timeIntervalSince($0) > ConstantsLibre2.recentReadingInterval } ?? true
-        return Texts_DirectLibre.readingStatus(source: glucoseSource.title, isStale: stale)
-    }
+    lazy var directLibre = Libre2WatchAddOn(display: self)
 
     // set timer to automatically refresh the view
     // https://www.hackingwithswift.com/quick-start/swiftui/how-to-use-a-timer-with-swiftui
@@ -145,7 +138,6 @@ final class WatchStateModel: NSObject, ObservableObject {
         self.session = session
         super.init()
 
-        configureDirectLibre()
         directLibre.restore()
         session.delegate = self
         session.activate()
@@ -651,119 +643,7 @@ final class WatchStateModel: NSObject, ObservableObject {
     }
 
     private func processBgReadingsFromDictionary(dictionary: [String: Any]) -> Bool {
-        guard !directLibre.isDirect,
-              let values = dictionary["bgReadingValues"] as? [Double],
-              let dates = dictionary["bgReadingDatesAsDouble"] as? [Double] else {
-            return false
-        }
-        return acceptGlucoseReadings(
-            values: values,
-            dates: dates,
-            slope: dictionary["slopeOrdinal"] as? Int ?? 0,
-            delta: dictionary["deltaValueInUserUnit"] as? Double ?? 0,
-            generatedAt: Date(timeIntervalSince1970: dictionary["generatedAt"] as? Double ?? Date().timeIntervalSince1970),
-            source: .phoneRelay
-        )
-    }
-
-    // MARK: - Direct Libre readings
-
-    private func configureDirectLibre() {
-        directLibre.onStatus = { [weak self] status in
-            self?.directLibreStatus = status
-        }
-        directLibre.onReadings = { [weak self] samples, sensorAge in
-            self?.acceptDirectLibreReadings(samples, sensorAge: sensorAge)
-        }
-    }
-
-    private func acceptDirectLibreReadings(_ samples: [Libre2Sample], sensorAge: UInt16) {
-        sensorAgeInMinutes = Double(sensorAge)
-        keepAliveIsDisabled = false
-        sensorNoiseStateRawValue = nil
-
-        let history = mergingDirectLibreHistory(samples)
-        let trend = directLibreTrend(from: history)
-        acceptGlucoseReadings(
-            values: history.map(\.glucoseLevelRaw),
-            dates: history.map { $0.timeStamp.timeIntervalSince1970 },
-            slope: trend.slopeOrdinal,
-            delta: isMgDl ? trend.delta : trend.delta / 18.0182,
-            generatedAt: Date(),
-            source: .directLibre2
-        )
-    }
-
-    /// The new BLE frame replaces its overlapping interval; retain only older chart history.
-    private func mergingDirectLibreHistory(_ samples: [Libre2Sample]) -> [Libre2Sample] {
-        let previousSamples = zip(bgReadingDates, bgReadingValues).map { date, value in
-            Libre2Sample(timeStamp: date, glucoseLevelRaw: value)
-        }
-        let oldestFrameDate = samples.last?.timeStamp ?? Date()
-        let olderHistory = previousSamples.filter { sample in
-            sample.timeStamp < oldestFrameDate && sample.timeStamp > Date().addingTimeInterval(-12 * 3600)
-        }
-        return (samples + olderHistory).sorted { $0.timeStamp > $1.timeStamp }
-    }
-
-    private func directLibreTrend(from samples: [Libre2Sample]) -> (delta: Double, slopeOrdinal: Int) {
-        let delta = samples.count > 1 ? samples[0].glucoseLevelRaw - samples[1].glucoseLevelRaw : 0
-        let minutes = samples.count > 1 ? max(samples[0].timeStamp.timeIntervalSince(samples[1].timeStamp) / 60, 1) : 1
-        let rate = delta / minutes
-        let slope: Int
-
-        if rate > 3 {
-            slope = 1
-        } else if rate > 2 {
-            slope = 2
-        } else if rate > 1 {
-            slope = 3
-        } else if rate < -3 {
-            slope = 7
-        } else if rate < -2 {
-            slope = 6
-        } else if rate < -1 {
-            slope = 5
-        } else {
-            slope = 4
-        }
-        return (delta, slope)
-    }
-
-    // MARK: - Shared reading acceptance
-
-    /// Both transports use the same display/history/complication update path.
-    @discardableResult
-    private func acceptGlucoseReadings(
-        values: [Double],
-        dates: [Double],
-        slope: Int,
-        delta: Double,
-        generatedAt: Date,
-        source: WatchGlucoseSource
-    ) -> Bool {
-        guard values.count == dates.count,
-              let latest = dates.first,
-              !values.isEmpty,
-              values.allSatisfy({ $0.isFinite && $0 > 0 }),
-              dates.allSatisfy({ $0.isFinite }),
-              latest > Date().addingTimeInterval(-3600).timeIntervalSince1970,
-              latest <= Date().addingTimeInterval(30).timeIntervalSince1970,
-              latest >= (bgReadingDates.first?.timeIntervalSince1970 ?? 0) else {
-            return false
-        }
-        bgReadingValues = values
-        bgReadingDates = dates.map { Date(timeIntervalSince1970: $0) }
-        bgReadingDatesAsDouble = dates
-        slopeOrdinal = slope
-        deltaValueInUserUnit = delta
-        updatedDate = generatedAt
-        glucoseSource = source
-        lastUpdatedTextString = Texts_WatchApp.lastReading + " "
-        lastUpdatedTimeString = bgReadingDates[0].formatted(date: .omitted, time: .shortened)
-        lastUpdatedTimeAgoString = bgReadingDates[0].daysAndHoursAgo(appendAgo: true)
-        updateComplicationData()
-        return true
+        directLibre.acceptPhoneReadings(dictionary)
     }
 
     private func processStatusFromDictionary(dictionary: [String: Any]) -> Bool {
@@ -878,7 +758,7 @@ final class WatchStateModel: NSObject, ObservableObject {
     }
 
     /// once we've process the state update, then save this data to the shared app group so that the complication can read it
-    private func updateComplicationData() {
+    func updateComplicationData() {
         guard let sharedUserDefaults = UserDefaults(suiteName: Bundle.main.appGroupSuiteName) else { return }
 
         // Do not leave stale glucose behind the warning when disabled; complications may remain
@@ -911,8 +791,7 @@ final class WatchStateModel: NSObject, ObservableObject {
 
 extension WatchStateModel: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
-        guard message[Libre2HandoffMessage.key] != nil else { replyHandler([:]); return }
-        DispatchQueue.main.async { self.directLibre.receive(message, reply: replyHandler) }
+        directLibre.receive(message, reply: replyHandler)
     }
 
     func session(_: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error _: Error?) {
@@ -927,7 +806,7 @@ extension WatchStateModel: WCSessionDelegate {
     }
 
     func sessionReachabilityDidChange(_: WCSession) {
-        DispatchQueue.main.async { self.directLibre.recordReachability() }
+        directLibre.recordReachability()
         DispatchQueue.main.async {
             // retry AGP requests that were made before the phone became reachable
             self.sendPendingAGPRequestIfPossible()

@@ -4,7 +4,7 @@ import Foundation
 /// Adapts the existing NFC reader for one explicit recovery attempt. Default NFC callers are unchanged.
 final class Libre2PhoneReclaim: LibreNFCDelegate {
     private let store = Libre2SessionStore.shared
-    private let transmitter: CGMLibre2Transmitter
+    private let sensor: Libre2PhoneSensor
     private let attempt: Libre2ReclaimState
     private let status: (String) -> Void
     private let finished: () -> Void
@@ -14,10 +14,10 @@ final class Libre2PhoneReclaim: LibreNFCDelegate {
     private var committed = false
 
     init(
-        transmitter: CGMLibre2Transmitter, attempt: Libre2ReclaimState,
+        sensor: Libre2PhoneSensor, attempt: Libre2ReclaimState,
         status: @escaping (String) -> Void, finished: @escaping () -> Void
     ) {
-        self.transmitter = transmitter
+        self.sensor = sensor
         self.attempt = attempt
         self.status = status
         self.finished = finished
@@ -45,8 +45,7 @@ final class Libre2PhoneReclaim: LibreNFCDelegate {
             // Persisted confirmation allows recovery after termination before defaults are updated.
             UserDefaults.standard.libreActiveSensorUnlockCode = attempt.unlockCode
             UserDefaults.standard.libreActiveSensorUnlockCount = 0
-            transmitter.received(sensorUID: attempt.sensorUID, patchInfo: patchInfo)
-            transmitter.received(fram: fram)
+            sensor.applyNFCReading(sensorUID: attempt.sensorUID, patchInfo: patchInfo, fram: fram)
             committed = true
             status(Texts_DirectLibre.reclaimVerifying)
         } catch {
@@ -61,20 +60,20 @@ final class Libre2PhoneReclaim: LibreNFCDelegate {
 
     func nfcScanExpectedDevice(serialNumber: String, macAddress: String) {
         guard committed else { return }
-        transmitter.nfcScanExpectedDevice(serialNumber: serialNumber, macAddress: macAddress)
+        sensor.expectedDevice(serialNumber: serialNumber, macAddress: macAddress)
     }
 
     func startBLEScanning() {
         guard committed else { return }
         // Do not count buffered readings from the previous phone connection as successful reclaim.
-        transmitter.disconnectForDirectHandoff {
+        sensor.disconnect {
             guard self.store.snapshot.reclaim?.id == self.attempt.id,
                 self.store.snapshot.owner == .reclaimingPhone
             else { return }
             do {
                 try self.store.beginReclaimVerification(id: self.attempt.id)
                 self.status(Texts_DirectLibre.reclaimVerifying)
-                self.transmitter.startBLEScanning()
+                self.sensor.startBLEScanning()
             } catch { self.status(error.localizedDescription) }
         }
     }

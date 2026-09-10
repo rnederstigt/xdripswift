@@ -5,14 +5,14 @@ import Foundation
 import WatchConnectivity
 
 /// Coordinates phone ownership using WatchManager's existing WCSession delegate.
-/// Call UI actions and message handlers on main. The transmitter freezes its counter on the Bluetooth queue.
+/// Call UI actions and message handlers on main. The sensor freezes its counter on the Bluetooth queue.
 final class Libre2PhoneHandoff: ObservableObject {
 
     // MARK: - Properties
 
     static let shared = Libre2PhoneHandoff()
 
-    weak var transmitter: CGMLibre2Transmitter?
+    weak var sensor: Libre2PhoneSensor?
     @Published var readingStatus = Libre2PhoneReadingStatus()
     @Published private(set) var isVerifyingPhoneConnection = false
     @Published var status = "" {
@@ -31,7 +31,7 @@ final class Libre2PhoneHandoff: ObservableObject {
     }
 
     var canReclaim: Bool {
-        !isReclaiming && !isStarting && !store.phoneNFCIsActive && transmitter != nil
+        !isReclaiming && !isStarting && !store.phoneNFCIsActive && sensor != nil
             && reclaimSensorUID != nil
             && NFCTagReaderSession.readingAvailable
     }
@@ -73,7 +73,7 @@ final class Libre2PhoneHandoff: ObservableObject {
                         isSatisfied: UserDefaults.standard.isMaster),
                     Libre2ChecklistItem(
                         id: "native", title: Texts_DirectLibre.nativeAlgorithm, detail: Texts_DirectLibre.nativeHelp,
-                        isSatisfied: transmitter?.isWebOOPEnabled() == true),
+                        isSatisfied: sensor?.usesNativeAlgorithm == true),
                     Libre2ChecklistItem(
                         id: "unlock", title: Texts_DirectLibre.unlockEnabled, detail: Texts_DirectLibre.unlockHelp,
                         isSatisfied: !UserDefaults.standard.suppressUnLockPayLoad),
@@ -83,7 +83,7 @@ final class Libre2PhoneHandoff: ObservableObject {
                 items: [
                     Libre2ChecklistItem(
                         id: "connected", title: Texts_DirectLibre.phoneConnected, detail: Texts_DirectLibre.phoneConnectedHelp,
-                        isSatisfied: transmitter?.getConnectionStatus() == .connected),
+                        isSatisfied: sensor?.isConnected == true),
                     Libre2ChecklistItem(
                         id: "reading", title: Texts_DirectLibre.freshReading, detail: readingDetail,
                         showsDetailWhenSatisfied: true, isSatisfied: readingStatus.hasRecentReading()),
@@ -115,7 +115,7 @@ final class Libre2PhoneHandoff: ObservableObject {
         switch store.snapshot.phoneSwitchAction {
         case .switchToWatch: return canStart
         case .returnToPhone: return canCancel
-        case .retryPhoneRecovery: return transmitter != nil
+        case .retryPhoneRecovery: return sensor != nil
         case .unavailable: return false
         }
     }
@@ -138,22 +138,22 @@ final class Libre2PhoneHandoff: ObservableObject {
 
     var canVerifyPhoneConnection: Bool {
         owner == .phone && !isStarting && !isReclaiming && !isVerifyingPhoneConnection
-            && !store.phoneNFCIsActive && transmitter?.getConnectionStatus() == .connected
+            && !store.phoneNFCIsActive && sensor?.isConnected == true
             && !UserDefaults.standard.suppressUnLockPayLoad
     }
 
     /// Re-establish an observable phone login after Core Bluetooth restores an existing stream.
     /// This uses the current credentials and the BLE-only scanner, never NFC provisioning.
     func verifyPhoneConnection() {
-        guard canVerifyPhoneConnection, let transmitter else { return }
+        guard canVerifyPhoneConnection, let sensor else { return }
         isVerifyingPhoneConnection = true
         readingStatus = Libre2PhoneReadingStatus()
         status = Texts_DirectLibre.verifyingPhoneConnection
-        transmitter.disconnectForDirectHandoff { [weak self, weak transmitter] in
+        sensor.disconnect { [weak self, weak sensor] in
             guard let self else { return }
             self.isVerifyingPhoneConnection = false
-            guard self.owner == .phone, let transmitter, self.transmitter === transmitter else { return }
-            transmitter.startBLEScanning()
+            guard self.owner == .phone, let sensor, self.sensor === sensor else { return }
+            sensor.startBLEScanning()
         }
     }
 
@@ -172,14 +172,14 @@ final class Libre2PhoneHandoff: ObservableObject {
     // MARK: - User actions
 
     func start() {
-        guard canStart, let transmitter else {
+        guard canStart, let sensor else {
             status = Libre2HandoffError.unavailable.localizedDescription
             return
         }
 
         isStarting = true
         status = Texts_DirectLibre.preparingWatch
-        transmitter.prepareDirectWatch { result in
+        sensor.prepareDirectWatch { result in
             self.isStarting = false
             switch result {
             case .success:
@@ -209,7 +209,7 @@ final class Libre2PhoneHandoff: ObservableObject {
 
     /// Phone recovery never depends on Watch reachability or acknowledgement.
     func reclaimViaNFC() {
-        guard canReclaim, let transmitter,
+        guard canReclaim, let sensor,
             let uid = reclaimSensorUID
         else { return }
         do {
@@ -223,11 +223,11 @@ final class Libre2PhoneHandoff: ObservableObject {
             isReclaiming = true
             readingStatus = Libre2PhoneReadingStatus()
             isVerifyingPhoneConnection = false
-            transmitter.disconnect()
+            sensor.disconnect()
             notifyWatchOfReclaim()
             status = Texts_DirectLibre.reclaimScanning
             reclaimReader = Libre2PhoneReclaim(
-                transmitter: transmitter, attempt: attempt,
+                sensor: sensor, attempt: attempt,
                 status: { [weak self] in self?.status = $0 },
                 finished: { [weak self] in
                     // NFC delegates issue expected-device/start-BLE callbacks immediately afterward.
@@ -257,10 +257,10 @@ final class Libre2PhoneHandoff: ObservableObject {
     private func retryReclaimVerification() {
         guard let id = store.snapshot.reclaim?.id else { return }
         status = Texts_DirectLibre.reclaimVerifying
-        transmitter?.disconnectForDirectHandoff {
+        sensor?.disconnect {
             do {
                 try self.store.beginReclaimVerification(id: id)
-                self.transmitter?.connect()
+                self.sensor?.connect()
                 self.scheduleVerificationTimeout()
             } catch { self.status = error.localizedDescription }
         }
@@ -343,13 +343,13 @@ final class Libre2PhoneHandoff: ObservableObject {
     }
 
     private func disconnectPhoneAndActivateWatch(_ session: Libre2WatchSession) {
-        guard let transmitter else {
+        guard let sensor else {
             status = Texts_DirectLibre.waitingForPhoneTransport
             return
         }
 
         status = Texts_DirectLibre.disconnectingPhone
-        transmitter.disconnectForDirectHandoff {
+        sensor.disconnect {
             // An intervening return message can supersede an outstanding disconnect callback.
             guard self.store.snapshot.owner == .releasingPhone,
                 self.store.snapshot.session?.id == session.id
@@ -419,11 +419,16 @@ final class Libre2PhoneHandoff: ObservableObject {
         try store.finishReturnOnPhone(id: storedSession.id)
         status = Texts_DirectLibre.phoneOwnsLibre
         if shouldResumePhone {
-            transmitter?.connect()
+            sensor?.connect()
         }
     }
 
     // MARK: - WatchConnectivity
+
+    static func receiveWatchMessage(_ dictionary: [String: Any], reply: @escaping ([String: Any]) -> Void) {
+        guard dictionary[Libre2HandoffMessage.key] != nil else { reply([:]); return }
+        DispatchQueue.main.async { shared.receive(dictionary, reply: reply) }
+    }
 
     private func send(_ kind: Libre2HandoffMessage.Kind, session: Libre2WatchSession, ready: @escaping () -> Void) {
         guard reachable else {

@@ -824,6 +824,11 @@
 		FA725DC2FB9404AB4AD7C3CF /* WatchGlucoseSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BE4A24863FA544D917A1A46 /* WatchGlucoseSource.swift */; };
 		FBA100020000000000000001 /* FollowerBackgroundKeepAliveManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA100010000000000000001 /* FollowerBackgroundKeepAliveManager.swift */; };
 		FBA100040000000000000001 /* FollowerBackgroundKeepAliveManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA100030000000000000001 /* FollowerBackgroundKeepAliveManagerTests.swift */; };
+		713500E196F3BF8960FB424F /* Libre2PhoneSensor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 286C1323FAB5F2E1E20EE01C /* Libre2PhoneSensor.swift */; };
+		E701CFCF64D42643643C1E6A /* Libre2PhoneSensorAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 812D630EABADEFC9819D41AC /* Libre2PhoneSensorAdapter.swift */; };
+		CFB68A44FD7B7B89DDE49A73 /* Libre2ReadingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447D5F28291D5DE60005131A /* Libre2ReadingPipeline.swift */; };
+		2C102E5A895D1BE4C344C42D /* Libre2WatchAddOn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1561C9BCEC0A5DDAB4C18E /* Libre2WatchAddOn.swift */; };
+		41000AEA70F638642FB157AF /* WatchStateModel+DirectLibre.swift in Sources */ = {isa = PBXBuildFile; fileRef = 455EDEC9CB6A88BF0331579C /* WatchStateModel+DirectLibre.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2008,6 +2013,14 @@
 		25E203D6EBBC8F1295D73ECF /* Libre2HandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Libre2HandoffTests.swift"; sourceTree = "<group>"; };
 		67521774F4FED9EF7E55E35B /* README.md */ = {isa = PBXFileReference; lastKnownFileType = text; path = "README.md"; sourceTree = "<group>"; };
 		92DD99D775C80F4FAE422869 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Package.swift"; sourceTree = "<group>"; };
+		286C1323FAB5F2E1E20EE01C /* Libre2PhoneSensor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Libre2PhoneSensor.swift"; sourceTree = "<group>"; };
+		812D630EABADEFC9819D41AC /* Libre2PhoneSensorAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Libre2PhoneSensorAdapter.swift"; sourceTree = "<group>"; };
+		447D5F28291D5DE60005131A /* Libre2ReadingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Libre2ReadingPipeline.swift"; sourceTree = "<group>"; };
+		7E1561C9BCEC0A5DDAB4C18E /* Libre2WatchAddOn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Libre2WatchAddOn.swift"; sourceTree = "<group>"; };
+		455EDEC9CB6A88BF0331579C /* WatchStateModel+DirectLibre.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WatchStateModel+DirectLibre.swift"; sourceTree = "<group>"; };
+		6501ACCE50366B3438D95DF8 /* INTEGRATION.md */ = {isa = PBXFileReference; lastKnownFileType = text; path = "INTEGRATION.md"; sourceTree = "<group>"; };
+		D4C54B63D80C852507C795CB /* Libre2ReadingPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Libre2ReadingPipelineTests.swift"; sourceTree = "<group>"; };
+		07C9A492FB33C0318F7E5ED7 /* check_integration.py */ = {isa = PBXFileReference; lastKnownFileType = text; path = "check_integration.py"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -3788,6 +3801,8 @@
 		463E4B451C6174CED2B3BBFA /* xDrip Watch Direct Libre2 Connection AddOn */ = {
 			isa = PBXGroup;
 			children = (
+				0E5305B8145CF7F78CDE1965 /* Scripts */,
+				6501ACCE50366B3438D95DF8 /* INTEGRATION.md */,
 				92DD99D775C80F4FAE422869 /* Package.swift */,
 				67521774F4FED9EF7E55E35B /* README.md */,
 				9D43925D876A5D53BB56F4B6 /* Shared */,
@@ -3801,6 +3816,7 @@
 		9D43925D876A5D53BB56F4B6 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				453B1363E3F6E468B824B767 /* Readings */,
 				6F958B0D74776F2B5031D286 /* Diagnostics */,
 				E703AAB8F2D6040A61E91456 /* Protocol */,
 				584ACC45FFBC77572C46999A /* Session */,
@@ -3845,6 +3861,7 @@
 		70732A82F137CF5658B87E7E /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				D4C54B63D80C852507C795CB /* Libre2ReadingPipelineTests.swift */,
 				25E203D6EBBC8F1295D73ECF /* Libre2HandoffTests.swift */,
 			);
 			path = "Tests";
@@ -3853,6 +3870,8 @@
 		57939F5DD892ECBA198F164D /* Watch */ = {
 			isa = PBXGroup;
 			children = (
+				51DF5598A793E2469F590D3F /* Adapters */,
+				7E1561C9BCEC0A5DDAB4C18E /* Libre2WatchAddOn.swift */,
 				72472371081CE791D7233DDF /* Libre2WatchCollector.swift */,
 				4C9FA9672F61FAD955AAF327 /* Libre2WatchHandoff.swift */,
 				D217F04CDF58DCBF224E1A98 /* UI */,
@@ -3872,6 +3891,7 @@
 		82854B40DCE0E3D80FB4F6F0 /* iPhone */ = {
 			isa = PBXGroup;
 			children = (
+				286C1323FAB5F2E1E20EE01C /* Libre2PhoneSensor.swift */,
 				2A2C862D4E41C6F247E5E184 /* Adapters */,
 				0766E0435232FFE05436C188 /* Libre2PhoneHandoff.swift */,
 				2EAC2E94D48DA2CFF8A528E8 /* Libre2PhoneReclaim.swift */,
@@ -3883,6 +3903,7 @@
 		2A2C862D4E41C6F247E5E184 /* Adapters */ = {
 			isa = PBXGroup;
 			children = (
+				812D630EABADEFC9819D41AC /* Libre2PhoneSensorAdapter.swift */,
 				10D258AA1573F997DDB184E2 /* Libre2Calibration+Phone.swift */,
 			);
 			path = "Adapters";
@@ -3895,6 +3916,30 @@
 				77E240AA658B72ECA00241C7 /* Libre2PhoneExperimentView.swift */,
 			);
 			path = "UI";
+			sourceTree = "<group>";
+		};
+		453B1363E3F6E468B824B767 /* Readings */ = {
+			isa = PBXGroup;
+			children = (
+				447D5F28291D5DE60005131A /* Libre2ReadingPipeline.swift */,
+			);
+			path = "Readings";
+			sourceTree = "<group>";
+		};
+		51DF5598A793E2469F590D3F /* Adapters */ = {
+			isa = PBXGroup;
+			children = (
+				455EDEC9CB6A88BF0331579C /* WatchStateModel+DirectLibre.swift */,
+			);
+			path = "Adapters";
+			sourceTree = "<group>";
+		};
+		0E5305B8145CF7F78CDE1965 /* Scripts */ = {
+			isa = PBXGroup;
+			children = (
+				07C9A492FB33C0318F7E5ED7 /* check_integration.py */,
+			);
+			path = "Scripts";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -4391,6 +4436,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				41000AEA70F638642FB157AF /* WatchStateModel+DirectLibre.swift in Sources */,
+				2C102E5A895D1BE4C344C42D /* Libre2WatchAddOn.swift in Sources */,
+				CFB68A44FD7B7B89DDE49A73 /* Libre2ReadingPipeline.swift in Sources */,
 				E054768FC157E8E39E02CF33 /* Libre2SourceStatusView.swift in Sources */,
 				FA725DC2FB9404AB4AD7C3CF /* WatchGlucoseSource.swift in Sources */,
 				D421362FD96A0A97199E70D5 /* Libre2WatchCollector.swift in Sources */,
@@ -4501,6 +4549,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E701CFCF64D42643643C1E6A /* Libre2PhoneSensorAdapter.swift in Sources */,
+				713500E196F3BF8960FB424F /* Libre2PhoneSensor.swift in Sources */,
 				172AA287A3E8DE18F6F5E818 /* Libre2PhoneExperimentView.swift in Sources */,
 				C8A60740AE3636B8B6F44CA9 /* Libre2Calibration+Phone.swift in Sources */,
 				A5C881CBC041A739DA9C6803 /* Libre2PhoneReclaim.swift in Sources */,

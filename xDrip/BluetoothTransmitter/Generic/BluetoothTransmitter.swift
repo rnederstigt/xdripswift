@@ -48,7 +48,7 @@ class BluetoothTransmitter: NSObject, CBCentralManagerDelegate, CBPeripheralDele
     private let centralQueue = DispatchQueue(label: "bt.central", qos: .userInitiated)
 
     /// Called on main only after the handoff disconnect has completed.
-    private var directHandoffDisconnectCompletion: (() -> Void)?
+    private var disconnectCompletion: (() -> Void)?
 
     /// queue-specific flag so we can detect whether we're already running on centralQueue
     private let centralQueueSpecificKey = DispatchSpecificKey<Void>()
@@ -222,7 +222,7 @@ class BluetoothTransmitter: NSObject, CBCentralManagerDelegate, CBPeripheralDele
         }
     }
     
-    // MARK: - Direct Watch handoff support
+    // MARK: - Connection policy and confirmed disconnection
 
     /// Transport policy is checked on the central queue, including queued writes and restoration.
     func allowsBluetoothActivity() -> Bool {
@@ -233,15 +233,15 @@ class BluetoothTransmitter: NSObject, CBCentralManagerDelegate, CBPeripheralDele
         centralQueue.async(execute: work)
     }
 
-    func disconnectForDirectHandoff(completion: @escaping () -> Void) {
+    func disconnect(completion: @escaping () -> Void) {
         centralQueue.async {
-            self.directHandoffDisconnectCompletion = completion
-            self.completeDirectHandoffDisconnectIfPossible()
+            self.disconnectCompletion = completion
+            self.completeRequestedDisconnectIfPossible()
         }
     }
 
-    private func completeDirectHandoffDisconnectIfPossible() {
-        guard directHandoffDisconnectCompletion != nil,
+    private func completeRequestedDisconnectIfPossible() {
+        guard disconnectCompletion != nil,
               let central = centralManager,
               central.state == .poweredOn else {
             return
@@ -254,8 +254,8 @@ class BluetoothTransmitter: NSObject, CBCentralManagerDelegate, CBPeripheralDele
             peripheral?.delegate = self
         }
         if peripheral == nil || peripheral?.state == .disconnected {
-            let completion = directHandoffDisconnectCompletion
-            directHandoffDisconnectCompletion = nil
+            let completion = disconnectCompletion
+            disconnectCompletion = nil
             if let completion {
                 DispatchQueue.main.async(execute: completion)
             }
@@ -807,8 +807,8 @@ class BluetoothTransmitter: NSObject, CBCentralManagerDelegate, CBPeripheralDele
     }
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        if directHandoffDisconnectCompletion != nil {
-            completeDirectHandoffDisconnectIfPossible()
+        if disconnectCompletion != nil {
+            completeRequestedDisconnectIfPossible()
             return
         }
         guard allowsBluetoothActivity() else { return }
@@ -825,8 +825,8 @@ class BluetoothTransmitter: NSObject, CBCentralManagerDelegate, CBPeripheralDele
     }
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        if directHandoffDisconnectCompletion != nil {
-            completeDirectHandoffDisconnectIfPossible()
+        if disconnectCompletion != nil {
+            completeRequestedDisconnectIfPossible()
             return
         }
         
@@ -881,8 +881,8 @@ class BluetoothTransmitter: NSObject, CBCentralManagerDelegate, CBPeripheralDele
             trace("in didDisconnectPeripheral, didDisconnect peripheral with name %{public}@", log: log, category: ConstantsLog.categoryBlueToothTransmitter, type: .info, troubleshooting: .detailed(.bluetooth(.disconnected)), deviceName ?? "'unknown'")
         }
 
-        if let completion = directHandoffDisconnectCompletion {
-            directHandoffDisconnectCompletion = nil
+        if let completion = disconnectCompletion {
+            disconnectCompletion = nil
             DispatchQueue.main.async(execute: completion)
             // The explicit disconnect caller decides when collection may resume.
             return

@@ -9,9 +9,9 @@ import CoreNFC
 class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
     // MARK: - properties
 
-    private var phoneReadingStatus = Libre2PhoneReadingStatus()
-    private var authenticatedThisConnection = false
-    private var connectionUnlockCode: UInt32?
+    @nonobjc private lazy var directLibre = Libre2PhoneSensorAdapter(
+        transmitter: self, sensorSerial: { [weak self] in self?.sensorSerialNumber }
+    )
 
     
     /// service to be discovered
@@ -81,21 +81,7 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
     ///     - cGMTransmitterDelegate : a CGMTransmitterDelegate
     ///     - webOOPEnabled : enabled or not, if nil then default false
     init(address: String?, name: String?, bluetoothTransmitterDelegate: BluetoothTransmitterDelegate, cGMLibre2TransmitterDelegate: CGMLibre2TransmitterDelegate, sensorSerialNumber: String?, cGMTransmitterDelegate: CGMTransmitterDelegate, nonFixedSlopeEnabled: Bool?, webOOPEnabled: Bool?) {
-        // Only the opt-in experiment's returned/reclaimed credentials are restored here.
-        let saved = Libre2SessionStore.shared.snapshot
-        if let reclaim = saved.reclaim, reclaim.nfcConfirmed,
-           reclaim.sensorUID == UserDefaults.standard.libreSensorUID {
-            if UserDefaults.standard.libreActiveSensorUnlockCode != reclaim.unlockCode {
-                UserDefaults.standard.libreActiveSensorUnlockCount = reclaim.unlockCount
-            } else {
-                UserDefaults.standard.libreActiveSensorUnlockCount = max(reclaim.unlockCount, UserDefaults.standard.libreActiveSensorUnlockCount)
-            }
-            UserDefaults.standard.libreActiveSensorUnlockCode = reclaim.unlockCode
-        } else if saved.owner == .phone, let returned = saved.session,
-                  returned.sensorUID == UserDefaults.standard.libreSensorUID,
-                  returned.unlockCode == UserDefaults.standard.libreActiveSensorUnlockCode {
-            UserDefaults.standard.libreActiveSensorUnlockCount = max(returned.unlockCount, UserDefaults.standard.libreActiveSensorUnlockCount)
-        }
+        Libre2PhoneSensorAdapter.restoreCredentials()
         // assign addressname and name or expected devicename
         // (actually this now isn't really necessary as for new devices, sensorSerialNumber will be nil and we'll update the superclass expectedName anyway after the NFC scan via the delegate)
         var newAddressAndName = BluetoothTransmitter.DeviceAddressAndName.notYetConnected(expectedName: "ABBOTT" + (sensorSerialNumber ?? ""))
@@ -126,16 +112,13 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
         self.webOOPEnabled = webOOPEnabled ?? false
 
         super.init(addressAndName: newAddressAndName, CBUUID_Advertisement: nil, servicesCBUUIDs: [CBUUID(string: CBUUID_Service_Libre2)], CBUUID_ReceiveCharacteristic: CBUUID_ReceiveCharacteristic_Libre2, CBUUID_WriteCharacteristic: CBUUID_WriteCharacteristic_Libre2, bluetoothTransmitterDelegate: bluetoothTransmitterDelegate)
-        DispatchQueue.main.async {
-            Libre2PhoneHandoff.shared.transmitter = self
-            Libre2PhoneHandoff.shared.readingStatus = Libre2PhoneReadingStatus()
-        }
+        directLibre.attach()
     }
     
     // MARK: - overriden  BluetoothTransmitter functions
     
     override func allowsBluetoothActivity() -> Bool {
-        Libre2SessionStore.shared.snapshot.owner.allowsPhoneConnection
+        Libre2PhoneSensorAdapter.allowsBluetoothActivity
     }
 
     override func startScanning() -> BluetoothTransmitter.startScanningResult {
@@ -146,14 +129,7 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
         if NFCTagReaderSession.readingAvailable {
             // startScanning is getting called several times, but we must restrict launch of nfc scan to one single time, therefore check if libreNFC == nil
             if libreNFC == nil {
-                do { try Libre2SessionStore.shared.beginPhoneNFC() }
-                catch {
-                    DispatchQueue.main.async {
-                        self.bluetoothTransmitterDelegate?.error(message: Texts_DirectLibre.usePhoneRecovery)
-                        Libre2PhoneHandoff.shared.status = Texts_DirectLibre.usePhoneRecovery
-                    }
-                    return .nfcScanNeeded
-                }
+                guard directLibre.beginNFC() else { return .nfcScanNeeded }
                 // One explicit Libre Connect/Add request creates one NFC session. Log that user-level
                 // milestone here, where the session is actually created, rather than in the repeated
                 // Bluetooth scanning callbacks that can occur while iOS changes radio state.
@@ -194,10 +170,7 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
     }
 
     override func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        authenticatedThisConnection = false
-        connectionUnlockCode = nil
-        phoneReadingStatus = Libre2PhoneReadingStatus()
-        publishPhoneReadingStatus()
+        directLibre.connectionStarted()
         resetRxBuffer()
         super.centralManager(central, didConnect: peripheral)
         
@@ -230,11 +203,8 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
 
     override func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         super.peripheral(peripheral, didWriteValueFor: characteristic, error: error)
-        if characteristic.uuid == CBUUID(string: CBUUID_WriteCharacteristic_Libre2),
-           allowsBluetoothActivity(), connectionUnlockCode != nil {
-            authenticatedThisConnection = error == nil
-            let message = error == nil ? Texts_DirectLibre.phoneLoginWritten : Texts_DirectLibre.phoneLoginWriteFailed
-            DispatchQueue.main.async { Libre2ActivityLog.shared.record(message) }
+        if characteristic.uuid == CBUUID(string: CBUUID_WriteCharacteristic_Libre2) {
+            directLibre.didWriteUnlock(error: error)
         }
     }
 
@@ -282,15 +252,7 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
         
         guard allowsBluetoothActivity() else { return }
         if error == nil && characteristic.isNotifying {
-            guard UserDefaults.standard.libreActiveSensorUnlockCount < UInt16.max else { return }
-            UserDefaults.standard.libreActiveSensorUnlockCount += 1
-            do {
-                try Libre2SessionStore.shared.recordPhoneCounter(
-                    UserDefaults.standard.libreActiveSensorUnlockCount,
-                    sensorUID: libreSensorUID, unlockCode: UserDefaults.standard.libreActiveSensorUnlockCode)
-            } catch { return }
-            authenticatedThisConnection = false
-            connectionUnlockCode = UserDefaults.standard.libreActiveSensorUnlockCode
+            guard directLibre.prepareUnlock(sensorUID: libreSensorUID) else { return }
             
             trace("sensorid as data =  %{public}@, patchinfo = %{public}@, unlockcode = %{public}@, unlockcount = %{public}@", log: log, category: ConstantsLog.categoryCGMLibre2, type: .info, libreSensorUID.hexEncodedString(), librePatchInfo.hexEncodedString(), UserDefaults.standard.libreActiveSensorUnlockCode.description, UserDefaults.standard.libreActiveSensorUnlockCount.description)
             
@@ -396,15 +358,8 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
                 // if oop web not enabled, then don't pass libre1DerivedAlgorithmParameters
                 let parsedBLEData = try Libre2BLEUtilities.parseBLEData(Data(Libre2BLEUtilities.decryptBLE(sensorUID: sensorUID, data: rxBuffer)), libre1DerivedAlgorithmParameters: isWebOOPEnabled() ? UserDefaults.standard.libre1DerivedAlgorithmParameters : nil)
                 
-                // Record real BLE data independently of the login/algorithm prerequisites.
-                // The test-data replay calls this parser too; it must never satisfy this checklist.
                 if receivedFromBluetooth, !parsedBLEData.bleGlucose.isEmpty {
-                    let canTransfer = authenticatedThisConnection
-                        && parsedBLEData.sensorTimeInMinutes >= ConstantsLibre2.minimumSensorAgeInMinutes
-                        && isWebOOPEnabled() && !UserDefaults.standard.suppressUnLockPayLoad
-                        && allowsBluetoothActivity()
-                    phoneReadingStatus.receivedBLEReading(at: Date(), verifiedUnlockCode: canTransfer ? connectionUnlockCode : nil)
-                    publishPhoneReadingStatus()
+                    directLibre.receivedBLEReading(sensorAge: parsedBLEData.sensorTimeInMinutes)
                 }
                 // deliver glucose data and sensor age to delegates on main; use local copy for inout
                 DispatchQueue.main.async { [weak self] in
@@ -420,55 +375,6 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
                 trace("in peripheral didUpdateValueFor, error while parsing/decrypting data =  %{public}@ ", log: log, category: ConstantsLog.categoryCGMLibre2, type: .info, error.localizedDescription)
                 
                 resetRxBuffer()
-            }
-        }
-    }
-
-    // MARK: - Direct Watch handoff
-
-    /// Publish an immutable snapshot; callbacks from a replaced transmitter must not update the page.
-    private func publishPhoneReadingStatus() {
-        let snapshot = phoneReadingStatus
-        DispatchQueue.main.async { [weak self] in
-            guard let self, Libre2PhoneHandoff.shared.transmitter === self else { return }
-            Libre2PhoneHandoff.shared.didUpdatePhoneReadingStatus(snapshot)
-        }
-    }
-
-    /// Snapshot and freeze authentication on the same queue as the Libre counter.
-    func prepareDirectWatch(completion: @escaping (Result<Libre2WatchSession, Error>) -> Void) {
-        performOnBluetoothQueue {
-            do {
-                guard self.allowsBluetoothActivity(), self.authenticatedThisConnection,
-                      self.connectionUnlockCode == UserDefaults.standard.libreActiveSensorUnlockCode,
-                      !Libre2SessionStore.shared.phoneNFCIsActive,
-                      self.getConnectionStatus() == .connected,
-                      self.phoneReadingStatus.hasRecentVerifiedReading(),
-                      !UserDefaults.standard.suppressUnLockPayLoad,
-                      self.isWebOOPEnabled(),
-                      let sensorUID = UserDefaults.standard.libreSensorUID,
-                      let patchInfo = UserDefaults.standard.librePatchInfo,
-                      let sensorSerial = self.sensorSerialNumber,
-                      let bluetoothName = self.deviceName,
-                      let parameters = UserDefaults.standard.libre1DerivedAlgorithmParameters,
-                      parameters.serialNumber == sensorSerial else {
-                    throw Libre2HandoffError.unavailable
-                }
-                let session = Libre2WatchSession(
-                    id: UUID(),
-                    createdAt: Date(),
-                    sensorUID: sensorUID,
-                    patchInfo: patchInfo,
-                    unlockCode: UserDefaults.standard.libreActiveSensorUnlockCode,
-                    unlockCount: UserDefaults.standard.libreActiveSensorUnlockCount,
-                    bluetoothName: bluetoothName,
-                    sensorSerial: sensorSerial,
-                    calibration: Libre2Calibration(parameters)
-                )
-                try Libre2SessionStore.shared.prepare(session)
-                DispatchQueue.main.async { completion(.success(session)) }
-            } catch {
-                DispatchQueue.main.async { completion(.failure(error)) }
             }
         }
     }
@@ -579,10 +485,7 @@ extension CGMLibre2Transmitter: LibreNFCDelegate {
     
     func streamingEnabled(successful: Bool) {
         if successful {
-            // Ordinary upstream NFC still uses code 42. Do not retain an earlier recovery code.
-            do { try Libre2SessionStore.shared.clearCompletedSessionAfterNFC() }
-            catch { return }
-            UserDefaults.standard.libreActiveSensorUnlockCode = 42
+            guard directLibre.didEnableNFCStreaming() else { return }
             trace("received streaming enabled message from NFC with result successful, setting unlockCount to 0", log: log, category: ConstantsLog.categoryCGMLibre2, type: .info)
             
             UserDefaults.standard.libreActiveSensorUnlockCount = 0
@@ -593,7 +496,7 @@ extension CGMLibre2Transmitter: LibreNFCDelegate {
     }
     
     func nfcScanResult(_ result: LibreNFCScanResult) {
-        Libre2SessionStore.shared.endPhoneNFC()
+        directLibre.endNFC()
         // Keep the Core NFC error and sensor payload in the developer trace. Only this closed result
         // crosses into the shareable Activity Log, so cancellation and timeout remain distinct from
         // an actual scan failure without exposing a sensor serial number or raw NFC response.

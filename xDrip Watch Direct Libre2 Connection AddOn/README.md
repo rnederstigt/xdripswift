@@ -2,7 +2,7 @@
 
 This checkout adds an opt-in, foreground Libre 2 connection experiment. All switching and recovery controls are on iPhone. The Watch has a direct-connection indicator and accepts commands from its paired phone.
 
-Base: xDrip4iOS `53b3d6bf1b550c99b19c3d5d2c2f80dd226465d8` (7.0.0 build 4231). Branch: `experimental/phone-controlled-libre-watch`. The experiment is contained in xDrip4iOS; it does not require Loop changes.
+Base: xDrip4iOS `53b3d6bf1b550c99b19c3d5d2c2f80dd226465d8` (7.0.0 build 4231). Branch: `experimental/phone-controlled-libre-watch`. The experiment is contained in this add-on directory with the original-app hooks documented in INTEGRATION.md; it does not require Loop changes.
 
 ## Experimental workflow
 
@@ -24,7 +24,7 @@ There are no experiment controls in the Settings header/version area or on a sep
 
 | Milestone | Implementation |
 | --- | --- |
-| Contained protocol reuse | Foundation-only Watch crypto, frame assembly, conversion and parsing under `Shared/Libre2`. Phone retains its existing crypto and parser implementation unchanged. |
+| Contained protocol reuse | Foundation-only Watch crypto, frame assembly, conversion and parsing under `Shared/Protocol/`. Phone retains its existing crypto and parser implementation unchanged. |
 | Phone control and persistence | Persisted session identity, credentials, calibration, counter and transaction phases. New phone BLE attempts are blocked outside phone/explicit reclaim verification phases. |
 | Forward switch | PREPARE → READY → confirmed phone disconnect → ACTIVATE. Watch creates its collector only after activation, or to close a previously saved connection. |
 | Watch collection | FDE3 service; persist counter increment before F001 write; subscribe F002 after the successful write callback, following the inspected DiaBLE ordering. Assemble 46-byte frames, authenticate/decrypt and convert using existing sensor parameters. |
@@ -45,22 +45,24 @@ The intended recovery property is **phone-controlled provisioning**, not guarant
 - A confirmed NFC command is persisted before defaults are updated. This permits recovery after termination between those operations. Phone BLE remains blocked until the disconnect barrier completes; only a fresh authenticated phone reading completes reclaim.
 - The journal is stored in app Application Support at `PhoneControlledLibre/ownership.json`; logs use `phoneControlledLibreActivityLog`. Credentials are not included in this diagnostic log. Existing upstream developer traces are unchanged.
 
-## Main files and review order
+## Add-on layout and review order
 
-Paths below are relative to this checkout.
+All experimental sources, host tests and this documentation are inside this directory. Xcode presents the same folder hierarchy. This is a source add-on compiled into the existing application targets; it is not a runtime plug-in or a separate distributable framework.
 
-1. `xDrip Watch Direct Libre2 Connection AddOn/Shared/Session/Libre2WatchSession.swift`, `Libre2Ownership.swift`, `Libre2ReclaimState.swift`, `Libre2SessionStore.swift`, `Libre2HandoffMessage.swift`: data format, transitions and side-effect ordering.
-2. `xDrip Watch Direct Libre2 Connection AddOn/iPhone/Libre2PhoneHandoff.swift`: phone actions and transaction orchestration. `Libre2PhoneReclaim.swift`: a small adapter around the existing NFC reader. `Libre2Calibration+Phone.swift`: conversion-parameter mapping.
-3. `xDrip/BluetoothTransmitter/CGM/Libre/Libre2/CGMLibre2Transmitter.swift`: recent-reading observation, frozen session snapshot, phone guards and counter persistence. `.../Utilities/LibreNFC.swift`: optional unlock-code and expected-UID parameters; original callers retain defaults. `.../Generic/BluetoothTransmitter.swift`: policy hook and confirmed-disconnect callback, with the default policy unchanged for other transmitters.
-4. `xDrip Watch Direct Libre2 Connection AddOn/Watch/Libre2WatchHandoff.swift` and `Libre2WatchCollector.swift`: command handling, return retries and local BLE. `xDrip Watch Direct Libre2 Connection AddOn/Shared/Protocol/Libre2Core.swift`, `PreLibre2.swift`, `Libre2FrameAssembler.swift`, `Libre2Calibration.swift`, `Libre2BLEData.swift`, `ConstantsLibre2.swift`: Watch protocol implementation and values.
-5. `xDrip Watch Direct Libre2 Connection AddOn/iPhone/UI/Libre2PhoneExperimentView.swift`, `Models/SettingsViewDevelopmentSettingsViewModel.swift`, `xDrip Watch Direct Libre2 Connection AddOn/iPhone/UI/Libre2DiagnosticsViews.swift`, `xDrip Watch Direct Libre2 Connection AddOn/Shared/Diagnostics/Libre2Diagnostics.swift`, `TextsDirectLibre.swift`: Advanced Settings entry, checklist, controls and log.
-6. `xDrip/Managers/Watch/WatchManager.swift`, `xDrip Watch App/DataModels/WatchStateModel.swift`, `WatchGlucoseSource.swift`, `Views/DirectLibre/Libre2SourceStatusView.swift`, `Views/BigNumberView/BigNumberView.swift`, `Views/MainView/SubViews/MainViewInfoView.swift`: existing companion-message integration and reading display.
-7. `xDrip Watch Direct Libre2 Connection AddOn/Package.swift`, `xDrip Watch Direct Libre2 Connection AddOn/Tests/Libre2HandoffTests.swift`, Xcode project/workspace settings, `xDrip-Watch-App-Info.plist`, `.gitignore`: validation and build configuration. The `Tests` directory contains source code, not build products.
+1. `Shared/Session/`: session format, ownership, recovery state, persistence and message types. These preserve the original prototype's on-disk keys and transaction ordering.
+2. `iPhone/Libre2PhoneHandoff.swift` and `Watch/Libre2WatchHandoff.swift`: forward/return/recovery coordination over the existing WatchConnectivity session.
+3. `iPhone/Libre2PhoneSensor.swift` and `iPhone/Adapters/Libre2PhoneSensorAdapter.swift`: the sensor interface and the mapping to the existing iPhone transmitter. The adapter owns freshness, login observation, credential restoration and session preparation. `iPhone/Libre2PhoneReclaim.swift` adapts the existing NFC reader.
+4. `Watch/Libre2WatchCollector.swift` and `Shared/Protocol/`: Watch BLE collection and the existing protocol algorithms. The iPhone retains its original crypto/parser implementation.
+5. `Watch/Libre2WatchAddOn.swift`, `Watch/Adapters/WatchStateModel+DirectLibre.swift` and `Shared/Readings/Libre2ReadingPipeline.swift`: source selection, history merging, trend calculation, reading validation and the bridge to existing Watch display/complication updates.
+6. `iPhone/UI/`, `Watch/UI/` and `Shared/Diagnostics/`: Advanced Settings entry, checklist, controls, log, indicator and text.
+7. `Tests/` and `Package.swift`: the host-test harness. `Scripts/check_integration.py` checks Xcode source paths and platform membership without building.
+
+See [INTEGRATION.md](INTEGRATION.md) for the complete list of changes outside this directory and why each is necessary.
 
 ## Validation and remaining work
 
-- **39 focused host tests passed**, zero failures: session serialization, counter progression/persistence-before-write, exhaustion, protocol fixture/parsing, exclusive ownership, cancellation, delayed IDs, interrupted returns, bounded logs, normal-NFC isolation and reclaim recovery. Checklist regressions cover received-but-unverified BLE data, freshness bounds, reconnect reset and older observations. Two additional switch-button regressions cover pending returns and confirmed NFC recovery.
-- **Native SDK Swift checks passed:** 483 iPhone sources, 56 Watch sources, and a final targeted phone transport check after two additional reconnect guards. These validate Swift compilation/types, not asset processing, linking, signing or installation.
+- **43 focused host tests passed**, zero failures: session serialization, counter progression/persistence-before-write, exhaustion, protocol fixture/parsing, exclusive ownership, cancellation, delayed IDs, interrupted returns, bounded logs, normal-NFC isolation and reclaim recovery. Checklist regressions cover received-but-unverified BLE data, freshness bounds, reconnect reset and older observations. Switch-button regressions cover pending returns and confirmed NFC recovery. Four reading-pipeline regressions cover overlap replacement, malformed/out-of-order data, timestamp bounds and trend calculation after extraction into the add-on.
+- **Native SDK Swift checks passed after the refactor:** 21 changed/add-on iPhone source files checked against the complete target declarations, and all 59 Watch Swift inputs (including generated asset symbols). These validate Swift compilation/types, not asset processing, linking, signing or installation. The Xcode membership check also passes for both targets.
 - **Full iPhone and Watch Xcode builds:** both stopped at asset compilation because this environment could not access simulator runtimes (`No available simulator runtimes`). Signing was disabled for these validation attempts only. A full build, signing and installation have not been verified here.
 - **No sensor/phone/Watch hardware tests were performed.** NFC regression checks, direct readings, reconnection and active-Watch displacement remain required.
 - This is a foreground proof of concept. There is no HKWorkoutSession mode, continuous-background guarantee, direct-reading upload/backfill to the phone, new Watch alarm system or production reliability claim. The existing Watch complication update path is called, but its device behavior still needs testing.
@@ -91,3 +93,7 @@ Use Xcode's default DerivedData location. The project no longer specifies empty 
 Use your own Apple development team through the existing ignored `xDripConfigOverride.xcconfig` file at the repository root (set `XDRIP_DEVELOPMENT_TEAM` to your team ID). Keep personal signing overrides and credentials out of commits. Source sharing does not require setting up the inherited GitHub signing workflows or uploading signing secrets.
 
 The Watch protocol helpers are adapted from the Libre 2 implementation already present in [xDrip4iOS](https://github.com/JohanDegraeve/xdripswift); existing source notices, including the DiaBox notice in `PreLibre2.swift`, are retained. Inspection of [DiaBLE](https://github.com/gui-dos/DiaBLE) informed the F001/F002 ordering and explicit NFC reprovisioning approach. This branch retains the repository's original [licence](../LICENSE).
+
+## Refactor compatibility
+
+The refactor keeps sensor credentials, counter rules, ownership phases, WatchConnectivity message keys and persistence paths unchanged. It does not require a new NFC provisioning step just because source files moved. Build both companion apps from the same branch. The existing two-second UI refresh schedules are unchanged; reducing refresh work is a separate task.
