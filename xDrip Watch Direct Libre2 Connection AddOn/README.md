@@ -49,13 +49,13 @@ The intended recovery property is **phone-controlled provisioning**, not guarant
 
 Paths below are relative to this checkout.
 
-1. `Shared/Libre2/Libre2WatchSession.swift`, `Libre2Ownership.swift`, `Libre2ReclaimState.swift`, `Libre2SessionStore.swift`, `Libre2HandoffMessage.swift`: data format, transitions and side-effect ordering.
-2. `xDrip/Managers/Watch/Libre2PhoneHandoff.swift`: phone actions and transaction orchestration. `Libre2PhoneReclaim.swift`: a small adapter around the existing NFC reader. `Libre2Calibration+Phone.swift`: conversion-parameter mapping.
+1. `xDrip Watch Direct Libre2 Connection AddOn/Shared/Session/Libre2WatchSession.swift`, `Libre2Ownership.swift`, `Libre2ReclaimState.swift`, `Libre2SessionStore.swift`, `Libre2HandoffMessage.swift`: data format, transitions and side-effect ordering.
+2. `xDrip Watch Direct Libre2 Connection AddOn/iPhone/Libre2PhoneHandoff.swift`: phone actions and transaction orchestration. `Libre2PhoneReclaim.swift`: a small adapter around the existing NFC reader. `Libre2Calibration+Phone.swift`: conversion-parameter mapping.
 3. `xDrip/BluetoothTransmitter/CGM/Libre/Libre2/CGMLibre2Transmitter.swift`: recent-reading observation, frozen session snapshot, phone guards and counter persistence. `.../Utilities/LibreNFC.swift`: optional unlock-code and expected-UID parameters; original callers retain defaults. `.../Generic/BluetoothTransmitter.swift`: policy hook and confirmed-disconnect callback, with the default policy unchanged for other transmitters.
-4. `xDrip Watch App/Managers/Libre2/Libre2WatchHandoff.swift` and `Libre2WatchCollector.swift`: command handling, return retries and local BLE. `Shared/Libre2/Libre2Core.swift`, `PreLibre2.swift`, `Libre2FrameAssembler.swift`, `Libre2Calibration.swift`, `Libre2BLEData.swift`, `ConstantsLibre2.swift`: Watch protocol implementation and values.
-5. `xDrip/SwiftUIViews/Settings/Libre2PhoneExperimentView.swift`, `Models/SettingsViewDevelopmentSettingsViewModel.swift`, `Shared/Libre2UI/Libre2DiagnosticsViews.swift`, `Shared/Libre2/Libre2Diagnostics.swift`, `TextsDirectLibre.swift`: Advanced Settings entry, checklist, controls and log.
+4. `xDrip Watch Direct Libre2 Connection AddOn/Watch/Libre2WatchHandoff.swift` and `Libre2WatchCollector.swift`: command handling, return retries and local BLE. `xDrip Watch Direct Libre2 Connection AddOn/Shared/Protocol/Libre2Core.swift`, `PreLibre2.swift`, `Libre2FrameAssembler.swift`, `Libre2Calibration.swift`, `Libre2BLEData.swift`, `ConstantsLibre2.swift`: Watch protocol implementation and values.
+5. `xDrip Watch Direct Libre2 Connection AddOn/iPhone/UI/Libre2PhoneExperimentView.swift`, `Models/SettingsViewDevelopmentSettingsViewModel.swift`, `xDrip Watch Direct Libre2 Connection AddOn/iPhone/UI/Libre2DiagnosticsViews.swift`, `xDrip Watch Direct Libre2 Connection AddOn/Shared/Diagnostics/Libre2Diagnostics.swift`, `TextsDirectLibre.swift`: Advanced Settings entry, checklist, controls and log.
 6. `xDrip/Managers/Watch/WatchManager.swift`, `xDrip Watch App/DataModels/WatchStateModel.swift`, `WatchGlucoseSource.swift`, `Views/DirectLibre/Libre2SourceStatusView.swift`, `Views/BigNumberView/BigNumberView.swift`, `Views/MainView/SubViews/MainViewInfoView.swift`: existing companion-message integration and reading display.
-7. `Package.swift`, `Tests/DirectLibreTests/Libre2HandoffTests.swift`, Xcode project/workspace settings, `xDrip-Watch-App-Info.plist`, `.gitignore`: validation and build configuration. The `Tests` directory contains source code, not build products.
+7. `xDrip Watch Direct Libre2 Connection AddOn/Package.swift`, `xDrip Watch Direct Libre2 Connection AddOn/Tests/Libre2HandoffTests.swift`, Xcode project/workspace settings, `xDrip-Watch-App-Info.plist`, `.gitignore`: validation and build configuration. The `Tests` directory contains source code, not build products.
 
 ## Validation and remaining work
 
@@ -81,7 +81,7 @@ Paths below are relative to this checkout.
 From this checkout:
 
 ```sh
-swift test --scratch-path ../work/phone-poc-tests
+swift test --package-path "xDrip Watch Direct Libre2 Connection AddOn" --scratch-path ../work/phone-poc-tests
 ```
 
 Use Xcode's default DerivedData location. The project no longer specifies empty SYMROOT/OBJROOT/SHARED_PRECOMPS_DIR values, which could resolve products against `/` or the source folder. For command-line builds, explicitly set a DerivedData directory outside this checkout. The machine-specific precompiled bridging-header artifact inherited from the base was removed from this checkout only. Generated validation caches can be discarded without touching source. Local development logs are not included in this branch.

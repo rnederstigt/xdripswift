@@ -7,7 +7,7 @@ let package = Package(
     platforms: [.macOS(.v12)],
     products: [.library(name: "Libre2ExperimentCore", targets: ["Libre2ExperimentCore"])],
     targets: [
-        .target(name: "Libre2ExperimentCore", path: "Shared/Libre2"),
-        .testTarget(name: "DirectLibreTests", dependencies: ["Libre2ExperimentCore"], path: "Tests/DirectLibreTests")
+        .target(name: "Libre2ExperimentCore", path: "Shared"),
+        .testTarget(name: "DirectLibreTests", dependencies: ["Libre2ExperimentCore"], path: "Tests")
     ]
 )

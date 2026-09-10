@@ -9,7 +9,7 @@ This branch adds a **phone-controlled, foreground proof of concept** for switchi
 - In Direct Watch mode, an antenna before the reading age is green when connected with fresh direct glucose, or grey when waiting, disconnected or stale.
 - Start with xDrip already receiving valid Libre BLE readings. Build matching iPhone and Watch apps from this branch and keep them open during testing.
 
-See the **[setup, switching workflow, architecture and device test checklist](Documentation/PhoneControlledLibreWatch.md)** before trying the experiment. This is a foreground prototype: continuous background collection, Watch alarms and direct-reading upload/backfill to the phone are not implemented. NFC reclaim reprovisions sensor credentials and may disrupt other apps' connections or alarms.
+See the **[setup, switching workflow, architecture and device test checklist](<xDrip Watch Direct Libre2 Connection AddOn/README.md>)** before trying the experiment. This is a foreground prototype: continuous background collection, Watch alarms and direct-reading upload/backfill to the phone are not implemented. NFC reclaim reprovisions sensor credentials and may disrupt other apps' connections or alarms.
 
 Validation performed during development: **39 host tests passed**, plus iPhone and Watch SDK source checks. Full signed builds and the device acceptance sequence are not covered by those automated checks.
 
