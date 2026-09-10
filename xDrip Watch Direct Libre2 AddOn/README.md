@@ -85,7 +85,7 @@ See [INTEGRATION.md](INTEGRATION.md) for the complete list of changes outside th
 From this checkout:
 
 ```sh
-swift test --package-path "xDrip Watch Direct Libre2 Connection AddOn" --scratch-path ../work/phone-poc-tests
+swift test --package-path "xDrip Watch Direct Libre2 AddOn" --scratch-path ../work/phone-poc-tests
 ```
 
 Use Xcode's default DerivedData location. The project no longer specifies empty SYMROOT/OBJROOT/SHARED_PRECOMPS_DIR values, which could resolve products against `/` or the source folder. For command-line builds, explicitly set a DerivedData directory outside this checkout. The machine-specific precompiled bridging-header artifact inherited from the base was removed from this checkout only. Generated validation caches can be discarded without touching source. Local development logs are not included in this branch.

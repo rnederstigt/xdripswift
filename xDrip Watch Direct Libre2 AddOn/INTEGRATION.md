@@ -46,8 +46,8 @@ The generic connection guards are essential. A separate collector cannot stop th
 Run from the repository root:
 
 ```sh
-python3 "xDrip Watch Direct Libre2 Connection AddOn/Scripts/check_integration.py"
-swift test --package-path "xDrip Watch Direct Libre2 Connection AddOn" --scratch-path ../work/direct-libre-tests
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_integration.py"
+swift test --package-path "xDrip Watch Direct Libre2 AddOn" --scratch-path ../work/direct-libre-tests
 ```
 
 The integration check verifies source paths, duplicate membership, platform separation and exclusion of host tests from app targets. The Swift package tests the Foundation-only components. App source checks/builds are still necessary because the host package does not compile the platform adapters.

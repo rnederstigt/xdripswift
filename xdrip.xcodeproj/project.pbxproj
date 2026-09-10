@@ -3042,7 +3042,7 @@
 		F8AC425121ADEBD60078C348 = {
 			isa = PBXGroup;
 			children = (
-				463E4B451C6174CED2B3BBFA /* xDrip Watch Direct Libre2 Connection AddOn */,
+				463E4B451C6174CED2B3BBFA /* xDrip Watch Direct Libre2 AddOn */,
 				471C9C022B933461005E1326 /* xDrip Widget Extension.entitlements */,
 				471C9C012B9333D5005E1326 /* xDrip Watch Complication Extension.entitlements */,
 				666E283926F7E54C00ACE4DF /* Version.xcconfig */,
@@ -3790,7 +3790,7 @@
 			path = CustomColoredDisclosureIndicator;
 			sourceTree = "<group>";
 		};
-		463E4B451C6174CED2B3BBFA /* xDrip Watch Direct Libre2 Connection AddOn */ = {
+		463E4B451C6174CED2B3BBFA /* xDrip Watch Direct Libre2 AddOn */ = {
 			isa = PBXGroup;
 			children = (
 				0E5305B8145CF7F78CDE1965 /* Scripts */,
@@ -3802,7 +3802,7 @@
 				57939F5DD892ECBA198F164D /* Watch */,
 				82854B40DCE0E3D80FB4F6F0 /* iPhone */,
 			);
-			path = "xDrip Watch Direct Libre2 Connection AddOn";
+			path = "xDrip Watch Direct Libre2 AddOn";
 			sourceTree = "<group>";
 		};
 		9D43925D876A5D53BB56F4B6 /* Shared */ = {

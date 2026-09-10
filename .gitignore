@@ -134,4 +134,4 @@ commit.txt
 # Personal signing and provisioning overrides
 /xDrip/xDripOverride.xcconfig
 
-/xDrip Watch Direct Libre2 Connection AddOn/.build/
+/xDrip Watch Direct Libre2 AddOn/.build/
