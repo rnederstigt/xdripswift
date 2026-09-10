@@ -70,6 +70,13 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
         publishPhoneReadingStatus()
     }
 
+    func connectionChanged() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, Libre2PhoneHandoff.shared.sensor === self else { return }
+            Libre2PhoneHandoff.shared.refreshChecklist()
+        }
+    }
+
     func prepareUnlock(sensorUID: Data) -> Bool {
         guard UserDefaults.standard.libreActiveSensorUnlockCount < UInt16.max else { return false }
         UserDefaults.standard.libreActiveSensorUnlockCount += 1

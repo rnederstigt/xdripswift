@@ -20,6 +20,8 @@ final class Libre2PhoneHandoff: ObservableObject {
     }
     @Published private(set) var isStarting = false
     private var lastReachability: Bool?
+    private var lastWatchState: [Bool] = []
+    private var lastSettings: ChecklistSettings?
     private var verificationTimeout: DispatchWorkItem?
     private var reclaimReader: Libre2PhoneReclaim?
     @Published private(set) var isReclaiming = false
@@ -163,10 +165,42 @@ final class Libre2PhoneHandoff: ObservableObject {
     }
 
     func recordReachability() {
+        let session = WCSession.default
+        let watchState = [session.activationState == .activated, session.isPaired, session.isWatchAppInstalled, reachable]
+        if watchState != lastWatchState {
+            lastWatchState = watchState
+            refreshChecklist()
+        }
         guard lastReachability != reachable else { return }
         lastReachability = reachable
         Libre2ActivityLog.shared.record(reachable ? Texts_DirectLibre.watchReachableLog : Texts_DirectLibre.watchUnreachableLog)
         if reachable, store.snapshot.reclaim != nil { notifyWatchOfReclaim() }
+    }
+
+    /// Called on main for connection, ownership or freshness changes; never sends a radio request.
+    func refreshChecklist() {
+        objectWillChange.send()
+    }
+
+    /// Ignore unrelated preference writes, including the activity journal and normal app updates.
+    func refreshChecklistSettings() {
+        let settings = ChecklistSettings(
+            isMaster: UserDefaults.standard.isMaster,
+            nativeAlgorithm: sensor?.usesNativeAlgorithm == true,
+            suppressUnlock: UserDefaults.standard.suppressUnLockPayLoad,
+            unlockCode: UserDefaults.standard.libreActiveSensorUnlockCode,
+            sensorUID: UserDefaults.standard.libreSensorUID)
+        guard settings != lastSettings else { return }
+        lastSettings = settings
+        refreshChecklist()
+    }
+
+    private struct ChecklistSettings: Equatable {
+        let isMaster: Bool
+        let nativeAlgorithm: Bool
+        let suppressUnlock: Bool
+        let unlockCode: UInt32
+        let sensorUID: Data?
     }
 
     // MARK: - User actions

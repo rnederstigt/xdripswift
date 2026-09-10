@@ -58,6 +58,14 @@ struct Libre2PhoneReadingStatus {
     func hasRecentVerifiedReading(at now: Date = Date()) -> Bool {
         verifiedUnlockCode != nil && hasRecentReading(at: now)
     }
+
+    /// The checklist shows an absolute timestamp, so only a freshness boundary needs a timer.
+    func nextFreshnessChange(at now: Date = Date()) -> Date? {
+        guard let lastReadingAt, lastReadingAt.timeIntervalSince1970.isFinite else { return nil }
+        if lastReadingAt > now { return lastReadingAt }
+        let expiry = lastReadingAt.addingTimeInterval(ConstantsLibre2.recentReadingInterval)
+        return expiry > now ? expiry : nil
+    }
 }
 
 /// A small local activity journal. Call on main; never pass sensor credentials or payloads.
@@ -69,6 +77,7 @@ final class Libre2ActivityLog {
     }
 
     static let shared = Libre2ActivityLog()
+    static let didChange = Notification.Name("Libre2ActivityLogDidChange")
     static let maximumEntries = 80
     private static let storageKey = "phoneControlledLibreActivityLog"
     private let defaults: UserDefaults
@@ -86,12 +95,15 @@ final class Libre2ActivityLog {
         entries.append(Entry(id: UUID(), date: now, message: message))
         entries = Array(entries.suffix(Self.maximumEntries))
         save()
+        NotificationCenter.default.post(name: Self.didChange, object: self)
     }
 
     /// This never touches the ownership journal or the sensor unlock counter.
     func clear() {
+        guard !entries.isEmpty else { return }
         entries.removeAll()
         defaults.removeObject(forKey: Self.storageKey)
+        NotificationCenter.default.post(name: Self.didChange, object: self)
     }
 
     private func save() {

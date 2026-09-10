@@ -7,6 +7,7 @@ final class Libre2SessionStore {
     // MARK: - Properties
 
     static let shared = Libre2SessionStore()
+    static let didChange = Notification.Name("Libre2SessionStoreDidChange")
 
     private var nfcActive = false
 
@@ -211,12 +212,15 @@ final class Libre2SessionStore {
         defer { lock.unlock() }
         guard record.owner == .phone, !nfcActive else { throw Libre2HandoffError.invalidTransition }
         nfcActive = true
+        NotificationCenter.default.post(name: Self.didChange, object: self)
     }
 
     func endPhoneNFC() {
         lock.lock()
         defer { lock.unlock() }
+        guard nfcActive else { return }
         nfcActive = false
+        NotificationCenter.default.post(name: Self.didChange, object: self)
     }
 
     /// Reclaim is available even after journal failure. Persist the new code before touching the sensor.
@@ -373,6 +377,13 @@ final class Libre2SessionStore {
         lock.lock()
         defer { lock.unlock() }
 
+        let previousRecord = record
+        // UI subscribers receive on main, after this locked transaction finishes.
+        defer {
+            if record != previousRecord {
+                NotificationCenter.default.post(name: Self.didChange, object: self)
+            }
+        }
         var updatedRecord = record
         let result = try update(&updatedRecord)
         do {

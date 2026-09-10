@@ -20,32 +20,61 @@ struct Libre2PhoneSettingsLink: View {
 }
 
 struct Libre2PhoneExperimentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var confirmsReclaim = false
     @ObservedObject private var handoff = Libre2PhoneHandoff.shared
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 2)) { _ in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text(handoff.owner.displayTitle).font(.headline)
-                    if !handoff.status.isEmpty && handoff.status != handoff.owner.displayTitle {
-                        Text(handoff.status).font(.callout)
-                    }
-                    controls
-                    Divider()
-                    Libre2ChecklistView(
-                        groups: handoff.checklistGroups,
-                        showsVerification: handoff.owner == .phone && !handoff.readingStatus.hasRecentVerifiedReading(),
-                        canVerify: handoff.canVerifyPhoneConnection,
-                        verify: handoff.verifyPhoneConnection
-                    )
-                    Divider()
-                    Libre2ActivityLogView(entries: Libre2ActivityLog.shared.entries)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text(handoff.owner.displayTitle).font(.headline)
+                if !handoff.status.isEmpty && handoff.status != handoff.owner.displayTitle {
+                    Text(handoff.status).font(.callout)
                 }
-                .padding()
+                controls
+                Divider()
+                Libre2ChecklistView(
+                    groups: handoff.checklistGroups,
+                    showsVerification: handoff.owner == .phone && !handoff.readingStatus.hasRecentVerifiedReading(),
+                    canVerify: handoff.canVerifyPhoneConnection,
+                    verify: handoff.verifyPhoneConnection
+                )
+                Divider()
+                Libre2ActivityLogView()
             }
-            .onAppear { handoff.recordReachability() }
-            .onChange(of: handoff.reachable) { _ in handoff.recordReachability() }
+            .padding()
+        }
+        .onAppear {
+            handoff.recordReachability()
+            handoff.refreshChecklistSettings()
+            handoff.refreshChecklist()
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                handoff.recordReachability()
+                handoff.refreshChecklistSettings()
+                handoff.refreshChecklist()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification, object: UserDefaults.standard)
+            .receive(on: RunLoop.main)) { _ in
+            guard scenePhase == .active else { return }
+            handoff.refreshChecklistSettings()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Libre2SessionStore.didChange, object: Libre2SessionStore.shared)
+            .receive(on: RunLoop.main)) { _ in
+            guard scenePhase == .active else { return }
+            handoff.refreshChecklist()
+        }
+        .task(id: freshnessDeadline) {
+            guard let deadline = freshnessDeadline else { return }
+            do {
+                try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow)))
+                try Task.checkCancellation()
+                handoff.refreshChecklist()
+            } catch {
+                // A new reading, leaving the page or backgrounding cancels this deadline.
+            }
         }
         .alert(Texts_DirectLibre.reclaimTitle, isPresented: $confirmsReclaim) {
             Button(Texts_DirectLibre.reclaimTitle, role: .destructive) { handoff.reclaimViaNFC() }
@@ -55,6 +84,11 @@ struct Libre2PhoneExperimentView: View {
         }
         .navigationTitle(Texts_DirectLibre.experimentTitle)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var freshnessDeadline: Date? {
+        guard scenePhase == .active, handoff.owner.allowsPhoneConnection else { return nil }
+        return handoff.readingStatus.nextFreshnessChange()
     }
 
     private var controls: some View {

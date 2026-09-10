@@ -11,7 +11,7 @@ This branch adds a **phone-controlled, foreground proof of concept** for switchi
 
 See the **[setup, switching workflow, architecture and device test checklist](<xDrip Watch Direct Libre2 Connection AddOn/README.md>)** before trying the experiment. This is a foreground prototype: continuous background collection, Watch alarms and direct-reading upload/backfill to the phone are not implemented. NFC reclaim reprovisions sensor credentials and may disrupt other apps' connections or alarms.
 
-Validation performed during development: **43 host tests passed**, plus iPhone and Watch SDK source checks. Full signed builds and the device acceptance sequence are not covered by those automated checks.
+Validation performed during development: **50 host tests passed**, plus iPhone and Watch SDK source checks. Full signed builds and the device acceptance sequence are not covered by those automated checks.
 
 The upstream xDrip4iOS introduction follows below.
 

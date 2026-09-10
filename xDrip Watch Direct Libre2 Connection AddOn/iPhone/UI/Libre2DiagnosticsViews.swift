@@ -50,7 +50,7 @@ struct Libre2ChecklistView: View {
 }
 
 struct Libre2ActivityLogView: View {
-    let entries: [Libre2ActivityLog.Entry]
+    @State private var entries = Libre2ActivityLog.shared.entries
     private static let pageSize = 5
     @State private var visibleCount = Libre2ActivityLogView.pageSize
 
@@ -80,5 +80,10 @@ struct Libre2ActivityLogView: View {
             .font(.caption)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { entries = Libre2ActivityLog.shared.entries }
+        .onReceive(NotificationCenter.default.publisher(for: Libre2ActivityLog.didChange, object: Libre2ActivityLog.shared)
+            .receive(on: RunLoop.main)) { _ in
+            entries = Libre2ActivityLog.shared.entries
+        }
     }
 }

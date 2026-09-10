@@ -32,7 +32,7 @@ enum Libre2Owner: String, Codable {
     }
 }
 
-struct Libre2OwnershipRecord: Codable {
+struct Libre2OwnershipRecord: Codable, Equatable {
     var owner: Libre2Owner = .phone
     var session: Libre2WatchSession?
     var retiredIDs: Set<UUID> = []

@@ -376,15 +376,23 @@ extension WatchManager: WCSessionDelegate {
         Libre2PhoneHandoff.receiveWatchMessage(message, reply: replyHandler)
     }
 
-    func sessionDidBecomeInactive(_: WCSession) {}
+    func sessionDidBecomeInactive(_: WCSession) {
+        DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
+    }
+
+    func sessionWatchStateDidChange(_: WCSession) {
+        DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
+    }
 
     func sessionDidDeactivate(_: WCSession) {
+        DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
         session = WCSession.default
         session.delegate = self
         activateSessionIfNeeded()
     }
 
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
         completeSessionActivationRequest()
 
         if let error {

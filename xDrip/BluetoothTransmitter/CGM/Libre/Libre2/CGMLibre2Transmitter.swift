@@ -121,6 +121,21 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
         Libre2PhoneSensorAdapter.allowsBluetoothActivity
     }
 
+    override func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        super.centralManagerDidUpdateState(central)
+        directLibre.connectionChanged()
+    }
+
+    override func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        super.centralManager(central, didDisconnectPeripheral: peripheral, error: error)
+        directLibre.connectionChanged()
+    }
+
+    override func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        super.centralManager(central, didFailToConnect: peripheral, error: error)
+        directLibre.connectionChanged()
+    }
+
     override func startScanning() -> BluetoothTransmitter.startScanningResult {
         // For Libre 2, a user-requested scan starts with NFC because the NFC read enables
         // Bluetooth streaming and refreshes the unlock state before BLE reconnects.

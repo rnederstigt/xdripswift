@@ -622,4 +622,99 @@ final class Libre2HandoffTests: XCTestCase {
         XCTAssertEqual(store.snapshot.phoneSwitchAction, .switchToWatch)
     }
 
+    // MARK: - Event-driven checklist refresh
+
+    func testChecklistSchedulesOnlyTheNextFreshnessBoundary() {
+        let now = Date(timeIntervalSince1970: 1000)
+        var status = Libre2PhoneReadingStatus()
+        XCTAssertNil(status.nextFreshnessChange(at: now))
+        status.receivedBLEReading(at: now, verifiedUnlockCode: 42)
+        let expiry = now.addingTimeInterval(ConstantsLibre2.recentReadingInterval)
+        XCTAssertEqual(status.nextFreshnessChange(at: now), expiry)
+        XCTAssertEqual(status.nextFreshnessChange(at: expiry.addingTimeInterval(-1)), expiry)
+        XCTAssertFalse(status.hasRecentVerifiedReading(at: expiry))
+        XCTAssertNil(status.nextFreshnessChange(at: expiry))
+        XCTAssertNil(status.nextFreshnessChange(at: expiry.addingTimeInterval(3600)))
+    }
+
+    func testNewReadingMovesDeadlineAndConnectionResetRemovesIt() {
+        let now = Date(timeIntervalSince1970: 1000)
+        var status = Libre2PhoneReadingStatus()
+        status.receivedBLEReading(at: now, verifiedUnlockCode: 42)
+        let nextReading = now.addingTimeInterval(60)
+        status.receivedBLEReading(at: nextReading, verifiedUnlockCode: 42)
+        XCTAssertEqual(status.nextFreshnessChange(at: nextReading),
+                       nextReading.addingTimeInterval(ConstantsLibre2.recentReadingInterval))
+        status = Libre2PhoneReadingStatus()
+        XCTAssertNil(status.nextFreshnessChange(at: nextReading))
+    }
+
+    func testClockMovingBackSchedulesWhenTheReadingBecomesEligibleAgain() {
+        let now = Date(timeIntervalSince1970: 1000)
+        var status = Libre2PhoneReadingStatus()
+        status.receivedBLEReading(at: now, verifiedUnlockCode: 42)
+        XCTAssertEqual(status.nextFreshnessChange(at: now.addingTimeInterval(-60)), now)
+        XCTAssertFalse(status.hasRecentReading(at: now.addingTimeInterval(-60)))
+        XCTAssertEqual(status.nextFreshnessChange(at: now), now.addingTimeInterval(ConstantsLibre2.recentReadingInterval))
+    }
+
+    func testOwnershipNotificationFollowsPersistenceAndSkipsUnchangedState() throws {
+        var persisted = Libre2OwnershipRecord()
+        let store = Libre2SessionStore { persisted = $0 }
+        var observedOwners: [Libre2Owner] = []
+        let observer = NotificationCenter.default.addObserver(forName: Libre2SessionStore.didChange, object: store, queue: nil) { _ in
+            XCTAssertEqual(store.snapshot, persisted)
+            observedOwners.append(store.snapshot.owner)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        let value = session()
+        try store.prepare(value)
+        try store.prepare(value)
+        try store.beginPhoneRelease(id: value.id)
+        XCTAssertEqual(observedOwners, [.preparingWatch, .releasingPhone])
+    }
+
+    func testJournalFailureNotifiesTheChecklistOfBlockedOwnership() {
+        let store = Libre2SessionStore { _ in throw Libre2HandoffError.persistence }
+        var observedOwners: [Libre2Owner] = []
+        let observer = NotificationCenter.default.addObserver(forName: Libre2SessionStore.didChange, object: store, queue: nil) { _ in
+            observedOwners.append(store.snapshot.owner)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        XCTAssertThrowsError(try store.prepare(session()))
+        XCTAssertEqual(observedOwners, [.failed])
+    }
+
+    func testNFCActivityNotifiesTheChecklistWithoutPolling() throws {
+        let store = Libre2SessionStore { _ in }
+        var observedActivity: [Bool] = []
+        let observer = NotificationCenter.default.addObserver(forName: Libre2SessionStore.didChange, object: store, queue: nil) { _ in
+            observedActivity.append(store.phoneNFCIsActive)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        try store.beginPhoneNFC()
+        store.endPhoneNFC()
+        store.endPhoneNFC()
+        XCTAssertEqual(observedActivity, [true, false])
+    }
+
+    func testActivityNotificationsIncludeNewEntriesAndClearButNotDuplicates() throws {
+        let suite = "DirectLibreTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let log = Libre2ActivityLog(defaults: defaults)
+        var counts: [Int] = []
+        let observer = NotificationCenter.default.addObserver(forName: Libre2ActivityLog.didChange, object: log, queue: nil) { _ in
+            counts.append(log.entries.count)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        log.record("Connected")
+        log.record("Connected")
+        log.record("")
+        log.record("Disconnected")
+        log.clear()
+        log.clear()
+        XCTAssertEqual(counts, [1, 2, 0])
+    }
+
 }
