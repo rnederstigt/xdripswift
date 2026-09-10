@@ -829,6 +829,15 @@
 		CFB68A44FD7B7B89DDE49A73 /* Libre2ReadingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447D5F28291D5DE60005131A /* Libre2ReadingPipeline.swift */; };
 		2C102E5A895D1BE4C344C42D /* Libre2WatchAddOn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1561C9BCEC0A5DDAB4C18E /* Libre2WatchAddOn.swift */; };
 		41000AEA70F638642FB157AF /* WatchStateModel+DirectLibre.swift in Sources */ = {isa = PBXBuildFile; fileRef = 455EDEC9CB6A88BF0331579C /* WatchStateModel+DirectLibre.swift */; };
+		2A8248AD5AE8B19A4FC1B743 /* Libre2History.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9092193381919FFAED639D62 /* Libre2History.swift */; };
+		E418E24021F17208EC1B3293 /* Libre2History.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9092193381919FFAED639D62 /* Libre2History.swift */; };
+		89A04A1A893BA9BEA71DAE84 /* Libre2HistoryQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E909AAE6FB44A4B6957FE6F /* Libre2HistoryQueue.swift */; };
+		29A40C67A75206CF659041C9 /* Libre2HistoryQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E909AAE6FB44A4B6957FE6F /* Libre2HistoryQueue.swift */; };
+		903B0FF03615B3E60FA54E61 /* Libre2HistoryRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062FD4227C759677C6D07DD8 /* Libre2HistoryRegistry.swift */; };
+		5E16298CF64DDE4AE09A079E /* Libre2HistoryRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062FD4227C759677C6D07DD8 /* Libre2HistoryRegistry.swift */; };
+		DD32CCAB7995B6CDA89C3DAE /* Libre2PhoneHistorySync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC87C2B98AB447371F40AC0 /* Libre2PhoneHistorySync.swift */; };
+		5C48C81AF05AC2679F4FAEE2 /* Libre2WatchHistorySync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 773265EFB6DAF0F1265148D6 /* Libre2WatchHistorySync.swift */; };
+		202ED9F899D8705221DB848B /* Libre2PhoneHistorySyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BBF45632CDC30AFE6F7E6E /* Libre2PhoneHistorySyncTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2021,6 +2030,14 @@
 		6501ACCE50366B3438D95DF8 /* INTEGRATION.md */ = {isa = PBXFileReference; lastKnownFileType = text; path = "INTEGRATION.md"; sourceTree = "<group>"; };
 		D4C54B63D80C852507C795CB /* Libre2ReadingPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Libre2ReadingPipelineTests.swift"; sourceTree = "<group>"; };
 		07C9A492FB33C0318F7E5ED7 /* check_integration.py */ = {isa = PBXFileReference; lastKnownFileType = text; path = "check_integration.py"; sourceTree = "<group>"; };
+		9092193381919FFAED639D62 /* Libre2History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2History.swift; sourceTree = "<group>"; };
+		4E909AAE6FB44A4B6957FE6F /* Libre2HistoryQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2HistoryQueue.swift; sourceTree = "<group>"; };
+		062FD4227C759677C6D07DD8 /* Libre2HistoryRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2HistoryRegistry.swift; sourceTree = "<group>"; };
+		9EC87C2B98AB447371F40AC0 /* Libre2PhoneHistorySync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2PhoneHistorySync.swift; sourceTree = "<group>"; };
+		773265EFB6DAF0F1265148D6 /* Libre2WatchHistorySync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2WatchHistorySync.swift; sourceTree = "<group>"; };
+		73BC22E4166CB7E5C4F9628D /* Libre2HistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2HistoryTests.swift; sourceTree = "<group>"; };
+		52BBF45632CDC30AFE6F7E6E /* Libre2PhoneHistorySyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2PhoneHistorySyncTests.swift; sourceTree = "<group>"; };
+		0783C42E64A488F8874F7F54 /* HISTORY_SYNC.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = HISTORY_SYNC.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -3793,6 +3810,7 @@
 		463E4B451C6174CED2B3BBFA /* xDrip Watch Direct Libre2 AddOn */ = {
 			isa = PBXGroup;
 			children = (
+				0783C42E64A488F8874F7F54 /* HISTORY_SYNC.md */,
 				0E5305B8145CF7F78CDE1965 /* Scripts */,
 				6501ACCE50366B3438D95DF8 /* INTEGRATION.md */,
 				92DD99D775C80F4FAE422869 /* Package.swift */,
@@ -3853,6 +3871,8 @@
 		70732A82F137CF5658B87E7E /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				52BBF45632CDC30AFE6F7E6E /* Libre2PhoneHistorySyncTests.swift */,
+				73BC22E4166CB7E5C4F9628D /* Libre2HistoryTests.swift */,
 				D4C54B63D80C852507C795CB /* Libre2ReadingPipelineTests.swift */,
 				25E203D6EBBC8F1295D73ECF /* Libre2HandoffTests.swift */,
 			);
@@ -3862,6 +3882,7 @@
 		57939F5DD892ECBA198F164D /* Watch */ = {
 			isa = PBXGroup;
 			children = (
+				773265EFB6DAF0F1265148D6 /* Libre2WatchHistorySync.swift */,
 				51DF5598A793E2469F590D3F /* Adapters */,
 				7E1561C9BCEC0A5DDAB4C18E /* Libre2WatchAddOn.swift */,
 				72472371081CE791D7233DDF /* Libre2WatchCollector.swift */,
@@ -3883,6 +3904,7 @@
 		82854B40DCE0E3D80FB4F6F0 /* iPhone */ = {
 			isa = PBXGroup;
 			children = (
+				9EC87C2B98AB447371F40AC0 /* Libre2PhoneHistorySync.swift */,
 				286C1323FAB5F2E1E20EE01C /* Libre2PhoneSensor.swift */,
 				2A2C862D4E41C6F247E5E184 /* Adapters */,
 				0766E0435232FFE05436C188 /* Libre2PhoneHandoff.swift */,
@@ -3913,6 +3935,9 @@
 		453B1363E3F6E468B824B767 /* Readings */ = {
 			isa = PBXGroup;
 			children = (
+				062FD4227C759677C6D07DD8 /* Libre2HistoryRegistry.swift */,
+				4E909AAE6FB44A4B6957FE6F /* Libre2HistoryQueue.swift */,
+				9092193381919FFAED639D62 /* Libre2History.swift */,
 				447D5F28291D5DE60005131A /* Libre2ReadingPipeline.swift */,
 			);
 			path = "Readings";
@@ -4428,6 +4453,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5C48C81AF05AC2679F4FAEE2 /* Libre2WatchHistorySync.swift in Sources */,
+				5E16298CF64DDE4AE09A079E /* Libre2HistoryRegistry.swift in Sources */,
+				29A40C67A75206CF659041C9 /* Libre2HistoryQueue.swift in Sources */,
+				E418E24021F17208EC1B3293 /* Libre2History.swift in Sources */,
 				41000AEA70F638642FB157AF /* WatchStateModel+DirectLibre.swift in Sources */,
 				2C102E5A895D1BE4C344C42D /* Libre2WatchAddOn.swift in Sources */,
 				CFB68A44FD7B7B89DDE49A73 /* Libre2ReadingPipeline.swift in Sources */,
@@ -4519,6 +4548,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				202ED9F899D8705221DB848B /* Libre2PhoneHistorySyncTests.swift in Sources */,
 				4D7D00023016000200000001 /* BluetoothPeripheralDisplayStatusTests.swift in Sources */,
 				4D7C00023015000100000001 /* CalibrationReadinessTests.swift in Sources */,
 				4D7B00023014000200000001 /* CGMG5SensorSessionDetectionTests.swift in Sources */,
@@ -4541,6 +4571,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DD32CCAB7995B6CDA89C3DAE /* Libre2PhoneHistorySync.swift in Sources */,
+				903B0FF03615B3E60FA54E61 /* Libre2HistoryRegistry.swift in Sources */,
+				89A04A1A893BA9BEA71DAE84 /* Libre2HistoryQueue.swift in Sources */,
+				2A8248AD5AE8B19A4FC1B743 /* Libre2History.swift in Sources */,
 				E701CFCF64D42643643C1E6A /* Libre2PhoneSensorAdapter.swift in Sources */,
 				713500E196F3BF8960FB424F /* Libre2PhoneSensor.swift in Sources */,
 				172AA287A3E8DE18F6F5E818 /* Libre2PhoneExperimentView.swift in Sources */,

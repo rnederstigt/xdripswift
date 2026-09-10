@@ -19,7 +19,7 @@ enum Libre2Owner: String, Codable {
     case reclaimingPhone
     /// NFC completed and the previous phone connection closed; a new phone login may proceed.
     case verifyingPhone
-    /// A journal error prevents either device from assuming ownership.
+    /// Ownership is unresolved, including an interrupted NFC reset; BLE remains blocked.
     case failed
 
     // PREPARE freezes new authentication while the existing phone connection remains alive.
@@ -39,4 +39,12 @@ struct Libre2OwnershipRecord: Codable, Equatable {
     var watchMayHaveConnected = false
     var watchPeripheralID: UUID?
     var reclaim: Libre2ReclaimState?
+    /// A user-requested ordinary NFC scan supersedes an abandoned Direct Libre session.
+    /// BLE stays blocked until fresh provisioning and confirmed phone disconnect complete.
+    var phoneNFCResetCode: UInt32?
+
+    /// Returning to phone does not discard credentials needed for later logins/recovery.
+    var hasExperimentalState: Bool {
+        owner != .phone || session != nil || reclaim != nil || phoneNFCResetCode != nil
+    }
 }

@@ -21,7 +21,7 @@ struct Libre2PhoneSettingsLink: View {
 
 struct Libre2PhoneExperimentView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @State private var confirmsReclaim = false
+    @State private var isVisible = false
     @ObservedObject private var handoff = Libre2PhoneHandoff.shared
 
     var body: some View {
@@ -45,12 +45,19 @@ struct Libre2PhoneExperimentView: View {
             .padding()
         }
         .onAppear {
+            isVisible = true
+            handoff.isPageVisible = scenePhase == .active
             handoff.recordReachability()
             handoff.refreshChecklistSettings()
             handoff.refreshChecklist()
         }
+        .onDisappear {
+            isVisible = false
+            handoff.isPageVisible = false
+        }
         .onChange(of: scenePhase) { phase in
-            if phase == .active {
+            handoff.isPageVisible = isVisible && phase == .active
+            if isVisible && phase == .active {
                 handoff.recordReachability()
                 handoff.refreshChecklistSettings()
                 handoff.refreshChecklist()
@@ -76,12 +83,6 @@ struct Libre2PhoneExperimentView: View {
                 // A new reading, leaving the page or backgrounding cancels this deadline.
             }
         }
-        .alert(Texts_DirectLibre.reclaimTitle, isPresented: $confirmsReclaim) {
-            Button(Texts_DirectLibre.reclaimTitle, role: .destructive) { handoff.reclaimViaNFC() }
-            Button(Texts_DirectLibre.cancelAction, role: .cancel) {}
-        } message: {
-            Text(Texts_DirectLibre.confirmReclaim)
-        }
         .navigationTitle(Texts_DirectLibre.experimentTitle)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -99,9 +100,7 @@ struct Libre2PhoneExperimentView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!handoff.canSwitchDevice)
-            Button(Texts_DirectLibre.reclaimTitle) { confirmsReclaim = true }
-                .disabled(!handoff.canReclaim)
-            Text(Texts_DirectLibre.reclaimSummary).font(.caption).foregroundColor(.secondary)
+            Text(Texts_DirectLibre.ordinaryScanRecovery).font(.caption).foregroundColor(.secondary)
         }
     }
 }

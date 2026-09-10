@@ -643,7 +643,38 @@ final class WatchStateModel: NSObject, ObservableObject {
     }
 
     private func processBgReadingsFromDictionary(dictionary: [String: Any]) -> Bool {
-        directLibre.acceptPhoneReadings(dictionary)
+        guard !directLibre.isDirect else { return false }
+        let bgReadingDatesFromDictionary: [Double] = dictionary["bgReadingDatesAsDouble"] as? [Double] ?? [0]
+
+        // let's make a quick check to see if the data about to be processed is from within the last hour
+        // this is to avoid long delays when re-opening a Watch app for the first time in days and waiting
+        // whilst the whole queue of userInfo messages are processed
+        if let lastBgReadingDateFromDictionaryReceived = bgReadingDatesFromDictionary.first, Date(timeIntervalSince1970: lastBgReadingDateFromDictionaryReceived) > Date(timeIntervalSinceNow: -60 * 60 * 1) {
+            bgReadingDates = bgReadingDatesFromDictionary.map { bgReadingDateAsDouble -> Date in
+                return Date(timeIntervalSince1970: bgReadingDateAsDouble)
+            }
+
+            bgReadingValues = dictionary["bgReadingValues"] as? [Double] ?? [100]
+
+            slopeOrdinal = dictionary["slopeOrdinal"] as? Int ?? 0
+            deltaValueInUserUnit = dictionary["deltaValueInUserUnit"] as? Double ?? 0
+            updatedDate = Date(timeIntervalSince1970: dictionary["generatedAt"] as? Double ?? Date().timeIntervalSince1970)
+
+            // check if there is any BG data available before updating the data source info strings accordingly
+            if let bgReadingDate = bgReadingDate() {
+                lastUpdatedTextString = Texts_WatchApp.lastReading + " "
+                lastUpdatedTimeString = bgReadingDate.formatted(date: .omitted, time: .shortened)
+                lastUpdatedTimeAgoString = bgReadingDate.daysAndHoursAgo(appendAgo: true)
+            } else {
+                lastUpdatedTextString = Texts_WatchApp.noSensorData
+                lastUpdatedTimeString = ""
+                lastUpdatedTimeAgoString = ""
+            }
+
+            return true
+        }
+
+        return false
     }
 
     private func processStatusFromDictionary(dictionary: [String: Any]) -> Bool {
@@ -799,6 +830,7 @@ extension WatchStateModel: WCSessionDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, activationState == .activated else { return }
 
+            self.directLibre.connectionActivated()
             self.requestWatchStateUpdate()
             // if the AGP tab requested data while activation was pending, send it now
             self.sendPendingAGPRequestIfPossible()
@@ -817,6 +849,7 @@ extension WatchStateModel: WCSessionDelegate {
 
     func session(_: WCSession, didReceiveMessage message: [String: Any]) {
         DispatchQueue.main.async {
+            guard !self.directLibre.receiveHistoryAcknowledgement(message) else { return }
             self.processWatchPayloadFromDictionary(dictionary: message)
             self.requestingDataIconColor = ConstantsAppleWatch.requestingDataIconColorActive
 
@@ -830,6 +863,11 @@ extension WatchStateModel: WCSessionDelegate {
 
     func session(_: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         DispatchQueue.main.async {
+            if let message = try? Libre2HandoffMessage.decode(userInfo), message.kind == .revoke {
+                self.directLibre.receive(userInfo, reply: { _ in })
+                return
+            }
+            guard !self.directLibre.receiveHistoryAcknowledgement(userInfo) else { return }
             self.processWatchPayloadFromDictionary(dictionary: userInfo)
         }
     }

@@ -13,7 +13,16 @@ final class Libre2PhoneHandoff: ObservableObject {
     static let shared = Libre2PhoneHandoff()
 
     weak var sensor: Libre2PhoneSensor?
-    @Published var readingStatus = Libre2PhoneReadingStatus()
+    var registerHistorySession: ((Libre2WatchSession, @escaping (Result<Void, Error>) -> Void) -> Void)?
+    var isPageVisible = false {
+        didSet {
+            Libre2ActivityLog.shared.isPageVisible = isPageVisible
+            if isPageVisible { refreshChecklist() }
+        }
+    }
+    var readingStatus = Libre2PhoneReadingStatus() {
+        didSet { refreshChecklist() }
+    }
     @Published private(set) var isVerifyingPhoneConnection = false
     @Published var status = "" {
         didSet { Libre2ActivityLog.shared.record(status) }
@@ -179,7 +188,7 @@ final class Libre2PhoneHandoff: ObservableObject {
 
     /// Called on main for connection, ownership or freshness changes; never sends a radio request.
     func refreshChecklist() {
-        objectWillChange.send()
+        if isPageVisible { objectWillChange.send() }
     }
 
     /// Ignore unrelated preference writes, including the activity journal and normal app updates.
@@ -364,6 +373,20 @@ final class Libre2PhoneHandoff: ObservableObject {
     // MARK: - Phone to Watch: PREPARE, disconnect, ACTIVATE
 
     private func prepareWatch(_ session: Libre2WatchSession) {
+        guard let registerHistorySession else {
+            status = Libre2HistoryError.unavailable.localizedDescription
+            return
+        }
+        registerHistorySession(session) { result in
+            guard self.owner == .preparingWatch, self.store.snapshot.session?.id == session.id else { return }
+            switch result {
+            case .success: self.sendWatchPreparation(session)
+            case .failure(let error): self.status = error.localizedDescription
+            }
+        }
+    }
+
+    private func sendWatchPreparation(_ session: Libre2WatchSession) {
         Libre2ActivityLog.shared.record(Texts_DirectLibre.prepareSent)
         send(.prepare, session: session) {
             guard self.owner == .preparingWatch, self.store.snapshot.session?.id == session.id else { return }

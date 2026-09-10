@@ -159,7 +159,7 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
                 // NFC session creation must be on main thread
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
-                    let libreNFC = LibreNFC(libreNFCDelegate: self)
+                    let libreNFC = LibreNFC(libreNFCDelegate: self, unlockCode: self.directLibre.nfcUnlockCode)
                     self.libreNFC = libreNFC
                     libreNFC.startSession()
                 }
@@ -186,7 +186,7 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
 
     override func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         directLibre.connectionStarted()
-        resetRxBuffer()
+        if Libre2PhoneSensorAdapter.hasExperimentalState { resetRxBuffer() }
         super.centralManager(central, didConnect: peripheral)
         
         if let sensorSerialNumber = tempSensorSerialNumber {
@@ -225,6 +225,8 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
 
     override func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         super.peripheral(peripheral, didUpdateValueFor: characteristic, error: error)
+        // An NFC reset may have replaced the UID while the old BLE connection is closing.
+        guard Libre2SessionStore.shared.snapshot.phoneNFCResetCode == nil else { return }
         
         // there should be already stored a value for libreSensorUID in the userdefaults at this moment, otherwise processing is not possible
         guard let libreSensorUID = UserDefaults.standard.libreSensorUID else {
@@ -265,8 +267,11 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
             return
         }
         
-        guard allowsBluetoothActivity() else { return }
         if error == nil && characteristic.isNotifying {
+            guard allowsBluetoothActivity() else {
+                directLibre.unlockWasWithheld("phone connection paused by Direct Libre")
+                return
+            }
             guard directLibre.prepareUnlock(sensorUID: libreSensorUID) else { return }
             
             trace("sensorid as data =  %{public}@, patchinfo = %{public}@, unlockcode = %{public}@, unlockcount = %{public}@", log: log, category: ConstantsLog.categoryCGMLibre2, type: .info, libreSensorUID.hexEncodedString(), librePatchInfo.hexEncodedString(), UserDefaults.standard.libreActiveSensorUnlockCode.description, UserDefaults.standard.libreActiveSensorUnlockCount.description)
@@ -278,6 +283,8 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
             // user may have chosen to run xDrip4iOS in parallel with other apps, in this case suppress sending unlockpayload
             if !UserDefaults.standard.suppressUnLockPayLoad {
                 _ = writeDataToPeripheral(data: unLockPayLoad, type: .withResponse)
+            } else {
+                directLibre.unlockWasWithheld("Suppress Unlock Payload is enabled")
             }
         }
     }
@@ -287,6 +294,7 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
         super.prepareForRelease()
         // Libre2-specific transient state cleanup
         let tearDown = {
+            self.directLibre.endNFC()
             self.rxBuffer = Data()
             self.startDate = Date()
             self.tempSensorSerialNumber = nil
@@ -500,10 +508,12 @@ extension CGMLibre2Transmitter: LibreNFCDelegate {
     
     func streamingEnabled(successful: Bool) {
         if successful {
+            let previousCounter = UserDefaults.standard.libreActiveSensorUnlockCount
             guard directLibre.didEnableNFCStreaming() else { return }
             trace("received streaming enabled message from NFC with result successful, setting unlockCount to 0", log: log, category: ConstantsLog.categoryCGMLibre2, type: .info)
             
             UserDefaults.standard.libreActiveSensorUnlockCount = 0
+            directLibre.didResetNFCCounter(from: previousCounter)
 
         } else {
             trace("received streaming enabled message from NFC with result unsuccessful", log: log, category: ConstantsLog.categoryCGMLibre2, type: .info)
@@ -511,7 +521,14 @@ extension CGMLibre2Transmitter: LibreNFCDelegate {
     }
     
     func nfcScanResult(_ result: LibreNFCScanResult) {
-        directLibre.endNFC()
+        let isDirectLibreReset = directLibre.isNFCResetScan
+        if result != .succeeded || !isDirectLibreReset {
+            directLibre.endNFC()
+        }
+        if isDirectLibreReset {
+            // Only the add-on reset changes retry behavior on this transmitter instance.
+            libreNFC = nil
+        }
         // Keep the Core NFC error and sensor payload in the developer trace. Only this closed result
         // crosses into the shareable Activity Log, so cancellation and timeout remain distinct from
         // an actual scan failure without exposing a sensor serial number or raw NFC response.
@@ -554,6 +571,16 @@ extension CGMLibre2Transmitter: LibreNFCDelegate {
     }
     
     func startBLEScanning() {
+        if Libre2SessionStore.shared.phoneNFCIsActive,
+           Libre2SessionStore.shared.snapshot.phoneNFCResetCode != nil {
+            directLibre.finishNFCReset { [weak self] in self?.startBLEScanningAfterReset() }
+        } else {
+            _ = super.startScanning()
+        }
+    }
+
+    private func startBLEScanningAfterReset() {
+        resetRxBuffer()
         _ = super.startScanning()
     }
     

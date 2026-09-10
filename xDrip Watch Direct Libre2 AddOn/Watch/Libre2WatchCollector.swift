@@ -9,6 +9,7 @@ final class Libre2WatchCollector: NSObject {
 
     var onStatus: (String) -> Void = { _ in }
     var onReadings: ([Libre2Sample], UInt16) -> Void = { _, _ in }
+    var onCollectedReading: (Libre2Sample, UInt16, Libre2WatchSession) -> Void = { _, _, _ in }
 
     private let store = Libre2SessionStore.shared
     private var centralManager: CBCentralManager!
@@ -159,6 +160,9 @@ final class Libre2WatchCollector: NSObject {
 
             connectionTimeoutWorkItem?.cancel()
             onStatus(Texts_DirectLibre.directConnected)
+            if let latest = parsedData.bleGlucose.first {
+                onCollectedReading(latest, parsedData.sensorTimeInMinutes, session)
+            }
             onReadings(displaySamples(from: parsedData.bleGlucose), parsedData.sensorTimeInMinutes)
         } catch {
             onStatus(Texts_DirectLibre.frameAuthenticationFailed)

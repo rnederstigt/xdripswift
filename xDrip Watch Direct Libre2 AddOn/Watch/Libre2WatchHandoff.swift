@@ -9,6 +9,7 @@ final class Libre2WatchHandoff {
 
     var onStatus: (String) -> Void = { _ in }
     var onReadings: ([Libre2Sample], UInt16) -> Void = { _, _ in }
+    var onCollectedReading: (Libre2Sample, UInt16, Libre2WatchSession) -> Void = { _, _, _ in }
 
     private let store = Libre2SessionStore.shared
     private var collectorInstance: Libre2WatchCollector?
@@ -54,6 +55,9 @@ final class Libre2WatchHandoff {
             self?.lastDirectReading = samples.first?.timeStamp ?? .distantPast
             self?.onReadings(samples, sensorAge)
         }
+        collector.onCollectedReading = { [weak self] sample, sensorMinute, session in
+            self?.onCollectedReading(sample, sensorMinute, session)
+        }
         collectorInstance = collector
         return collector
     }
@@ -75,7 +79,7 @@ final class Libre2WatchHandoff {
             publishStatus(Texts_DirectLibre.returnRetryInstructions)
             resumePendingReturn()
         case .phone:
-            publishStatus(Texts_DirectLibre.phoneRelay)
+            if store.snapshot.hasExperimentalState { publishStatus(Texts_DirectLibre.phoneRelay) }
         default:
             publishStatus(Texts_DirectLibre.ownershipUnresolved)
         }
@@ -93,9 +97,10 @@ final class Libre2WatchHandoff {
             case .activate:
                 try activateCollector(for: message.session)
             case .revoke:
-                try store.revokeOnWatch(message.session)
-                stopRevokedSession(message.session, reply: reply)
-                return
+                if try store.revokeOnWatch(message.session) {
+                    stopRevokedSession(message.session, reply: reply)
+                    return
+                }
             case .requestReturn:
                 try store.prepareRequestedReturn(message.session)
                 returnToPhone()

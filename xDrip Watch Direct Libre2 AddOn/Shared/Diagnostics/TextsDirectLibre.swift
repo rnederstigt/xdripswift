@@ -451,7 +451,7 @@ class Texts_DirectLibre {
     static let reclaimNotVerified = NSLocalizedString(
         "reclaimNotVerified", tableName: filename, bundle: .main,
         value:
-            "Reclaim not verified: no fresh phone BLE reading. Enable Bluetooth, keep the phone near the sensor, then retry or reclaim again.",
+            "Reclaim not verified: no fresh phone BLE reading. Enable Bluetooth, keep the phone near the sensor, then retry or use the ordinary Libre Add/Connect NFC scan.",
         comment: "Phone-controlled Libre proof of concept")
 
     static let reclaimFailed = NSLocalizedString(
@@ -463,7 +463,7 @@ class Texts_DirectLibre {
     static let usePhoneRecovery = NSLocalizedString(
         "usePhoneRecovery", tableName: filename, bundle: .main,
         value:
-            "Direct Libre is active or unresolved. Open Advanced Settings → Direct Libre to return or reclaim via NFC.",
+            "Direct Libre is active or unresolved. Return from Advanced Settings → Direct Libre, or use the ordinary Libre Add/Connect NFC scan to reset the connection.",
         comment: "Phone-controlled Libre proof of concept")
 
     static let wrongReclaimSensor = NSLocalizedString(
@@ -565,9 +565,10 @@ class Texts_DirectLibre {
     static let retryPhoneConnection = NSLocalizedString(
         "retryPhoneConnection", tableName: filename, bundle: .main,
         value: "Retry iPhone connection", comment: "Direct Libre switch button after NFC recovery")
-    static let reclaimSummary = NSLocalizedString(
-        "reclaimSummary", tableName: filename, bundle: .main,
-        value: "If normal return cannot finish, scan the same sensor to recover on iPhone.", comment: "Direct Libre recovery help")
+    static let ordinaryScanRecovery = NSLocalizedString(
+        "ordinaryScanRecovery", tableName: filename, bundle: .main,
+        value: "If return cannot finish, use the ordinary Libre Add/Connect NFC scan to reset Direct Libre and connect the sensor on iPhone. The Watch does not need to be reachable.",
+        comment: "Direct Libre recovery through the original sensor screen")
     static let showMoreActivity = NSLocalizedString(
         "showMoreActivity", tableName: filename, bundle: .main,
         value: "Show more", comment: "Show five more Direct Libre activity entries")

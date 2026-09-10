@@ -1,4 +1,5 @@
 import Foundation
+import WatchConnectivity
 
 /// Keeps Direct Libre authentication and freshness tracking out of the original transmitter.
 /// BLE callbacks and session preparation run on the transmitter's Bluetooth queue.
@@ -8,11 +9,17 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
     private var phoneReadingStatus = Libre2PhoneReadingStatus()
     private var authenticatedThisConnection = false
     private var connectionUnlockCode: UInt32?
+    private var ownsNFCScan = false
+    private var resetUnlockCode: UInt32?
 
     init(transmitter: CGMLibre2Transmitter, sensorSerial: @escaping () -> String?) {
         self.transmitter = transmitter
         self.sensorSerial = sensorSerial
     }
+
+    deinit { endNFC() }
+
+    static var hasExperimentalState: Bool { Libre2SessionStore.shared.snapshot.hasExperimentalState }
 
     static var allowsBluetoothActivity: Bool {
         Libre2SessionStore.shared.snapshot.owner.allowsPhoneConnection
@@ -78,13 +85,19 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
     }
 
     func prepareUnlock(sensorUID: Data) -> Bool {
-        guard UserDefaults.standard.libreActiveSensorUnlockCount < UInt16.max else { return false }
+        guard UserDefaults.standard.libreActiveSensorUnlockCount < UInt16.max else {
+            unlockWasWithheld("counter exhausted at 65535")
+            return false
+        }
         UserDefaults.standard.libreActiveSensorUnlockCount += 1
         do {
             try Libre2SessionStore.shared.recordPhoneCounter(
                 UserDefaults.standard.libreActiveSensorUnlockCount,
                 sensorUID: sensorUID, unlockCode: UserDefaults.standard.libreActiveSensorUnlockCode)
-        } catch { return false }
+        } catch {
+            unlockWasWithheld("counter persistence rejected (\(error.localizedDescription))")
+            return false
+        }
         authenticatedThisConnection = false
         connectionUnlockCode = UserDefaults.standard.libreActiveSensorUnlockCode
         return true
@@ -161,24 +174,106 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
 
     func beginNFC() -> Bool {
         do {
-            try Libre2SessionStore.shared.beginPhoneNFC()
+            let store = Libre2SessionStore.shared
+            let previous = store.snapshot
+            var code: UInt32?
+            if previous.hasExperimentalState {
+                var candidate = UInt32.random(in: 1...(UInt32.max - UInt32(UInt16.max)))
+                while candidate == 42 || candidate == previous.session?.unlockCode || candidate == previous.reclaim?.unlockCode
+                    || candidate == previous.phoneNFCResetCode || candidate == UserDefaults.standard.libreActiveSensorUnlockCode {
+                    candidate = UInt32.random(in: 1...(UInt32.max - UInt32(UInt16.max)))
+                }
+                code = candidate
+            }
+            try store.beginPhoneNFC(resetUnlockCode: code)
+            reportAuthentication("NFC started; counter \(UserDefaults.standard.libreActiveSensorUnlockCount); Direct Libre reset: \(code != nil).")
+            ownsNFCScan = true
+            resetUnlockCode = store.snapshot.phoneNFCResetCode
+            if resetUnlockCode != nil {
+                DispatchQueue.main.async {
+                    Libre2PhoneHandoff.shared.readingStatus = Libre2PhoneReadingStatus()
+                    Libre2PhoneHandoff.shared.status = "Direct Libre reset started. Scan the sensor you want to use."
+                    if let old = previous.session, WCSession.default.activationState == .activated,
+                       let message = try? Libre2HandoffMessage(kind: .revoke, session: old).dictionary {
+                        // An unavailable Watch must not block a new sensor. A queued, session-bound
+                        // revoke stops its retired collector when WatchConnectivity can deliver it.
+                        WCSession.default.transferUserInfo(message)
+                    }
+                }
+            }
             return true
         } catch {
             DispatchQueue.main.async { [weak self] in
-                self?.transmitter?.bluetoothTransmitterDelegate?.error(message: Texts_DirectLibre.usePhoneRecovery)
-                Libre2PhoneHandoff.shared.status = Texts_DirectLibre.usePhoneRecovery
+                self?.transmitter?.bluetoothTransmitterDelegate?.error(message: error.localizedDescription)
+                Libre2PhoneHandoff.shared.status = error.localizedDescription
             }
             return false
         }
     }
 
+    var nfcUnlockCode: UInt32 { resetUnlockCode ?? 42 }
+    var isNFCResetScan: Bool { ownsNFCScan && resetUnlockCode != nil }
+
     func didEnableNFCStreaming() -> Bool {
-        // Ordinary NFC uses the upstream code. Retire completed experimental credentials.
-        do { try Libre2SessionStore.shared.clearCompletedSessionAfterNFC() }
-        catch { return false }
-        UserDefaults.standard.libreActiveSensorUnlockCode = 42
+        if let code = resetUnlockCode {
+            do {
+                guard ownsNFCScan else { throw Libre2HandoffError.staleSession }
+                try Libre2SessionStore.shared.confirmPhoneNFCReset(unlockCode: code)
+            } catch {
+                reportAuthentication("NFC counter reset withheld: \(error.localizedDescription). Counter remains \(UserDefaults.standard.libreActiveSensorUnlockCount).")
+                return false
+            }
+            // Only experimental provisioning replaces the saved unlock code.
+            UserDefaults.standard.libreActiveSensorUnlockCode = code
+            return true
+        }
+        guard !Self.hasExperimentalState else {
+            reportAuthentication("NFC counter reset withheld: no matching Direct Libre reset attempt. Counter remains \(UserDefaults.standard.libreActiveSensorUnlockCount).")
+            return false
+        }
+        // Ordinary NFC retains the upstream counter reset, without a journal/code write.
         return true
     }
 
-    func endNFC() { Libre2SessionStore.shared.endPhoneNFC() }
+    func didResetNFCCounter(from previous: UInt16) {
+        reportAuthentication("NFC counter reset: \(previous) → \(UserDefaults.standard.libreActiveSensorUnlockCount); next BLE unlock will advance the counter.")
+    }
+
+    func unlockWasWithheld(_ reason: String) {
+        reportAuthentication("Libre unlock withheld: \(reason). Counter \(UserDefaults.standard.libreActiveSensorUnlockCount).")
+    }
+
+    private func reportAuthentication(_ message: String) {
+        DispatchQueue.main.async { Libre2ActivityLog.shared.record(message, force: true) }
+    }
+
+    func endNFC() {
+        guard ownsNFCScan else { return }
+        ownsNFCScan = false
+        resetUnlockCode = nil
+        Libre2SessionStore.shared.endPhoneNFC()
+    }
+
+    func finishNFCReset(completion: @escaping () -> Void) {
+        guard ownsNFCScan, let transmitter, let code = resetUnlockCode,
+              let sensorUID = UserDefaults.standard.libreSensorUID else { return }
+        transmitter.disconnect { [weak self, weak transmitter] in
+            guard let self, let transmitter else { return }
+            transmitter.performOnBluetoothQueue {
+                guard self.ownsNFCScan, self.resetUnlockCode == code else { return }
+                do {
+                    self.connectionStarted()
+                    try Libre2SessionStore.shared.finishPhoneNFCReset(unlockCode: code, sensorUID: sensorUID)
+                    self.endNFC()
+                    DispatchQueue.main.async {
+                        Libre2PhoneHandoff.shared.status = "Direct Libre reset completed; connecting to the scanned sensor."
+                    }
+                    completion()
+                } catch {
+                    self.endNFC()
+                    DispatchQueue.main.async { Libre2PhoneHandoff.shared.status = error.localizedDescription }
+                }
+            }
+        }
+    }
 }

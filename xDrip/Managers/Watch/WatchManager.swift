@@ -20,6 +20,9 @@ final class WatchManager: NSObject, ObservableObject, @unchecked Sendable {
     /// a watch connectivity session instance
     private var session: WCSession
 
+    /// Durable import of readings collected by the Direct Libre add-on.
+    private lazy var directLibreHistory = Libre2PhoneHistorySync(coreDataManager: coreDataManager, session: session)
+
     /// prevents duplicate activate calls while WatchConnectivity is already processing one
     private let sessionActivationLock = NSLock()
     private var sessionActivationRequested = false
@@ -70,6 +73,11 @@ final class WatchManager: NSObject, ObservableObject, @unchecked Sendable {
         self.session = session
 
         super.init()
+
+        Libre2PhoneHandoff.shared.registerHistorySession = { [weak self] watchSession, completion in
+            guard let self else { completion(.failure(Libre2HistoryError.unavailable)); return }
+            self.directLibreHistory.register(watchSession, completion: completion)
+        }
 
         if WCSession.isSupported() {
             session.delegate = self
@@ -373,7 +381,10 @@ final class WatchManager: NSObject, ObservableObject, @unchecked Sendable {
 
 extension WatchManager: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
-        Libre2PhoneHandoff.receiveWatchMessage(message, reply: replyHandler)
+        DispatchQueue.main.async {
+            guard !self.directLibreHistory.receive(message, reply: replyHandler) else { return }
+            Libre2PhoneHandoff.receiveWatchMessage(message, reply: replyHandler)
+        }
     }
 
     func sessionDidBecomeInactive(_: WCSession) {
@@ -444,7 +455,9 @@ extension WatchManager: WCSessionDelegate {
         }
     }
 
-    func session(_: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {}
+    func session(_: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        DispatchQueue.main.async { self.directLibreHistory.receive(userInfo) }
+    }
 
     func session(_: WCSession, didReceiveMessageData _: Data) {}
 

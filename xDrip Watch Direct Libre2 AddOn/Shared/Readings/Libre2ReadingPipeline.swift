@@ -1,6 +1,6 @@
 import Foundation
 
-/// Display-ready values. Both relayed and direct readings pass the same validation.
+/// Display-ready direct readings. Phone relay retains its upstream validation in the host.
 struct Libre2ReadingBatch {
     let values: [Double]
     let dates: [Double]

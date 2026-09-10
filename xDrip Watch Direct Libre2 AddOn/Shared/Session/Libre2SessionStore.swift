@@ -10,6 +10,7 @@ final class Libre2SessionStore {
     static let didChange = Notification.Name("Libre2SessionStoreDidChange")
 
     private var nfcActive = false
+    private var confirmedNFCResetCode: UInt32?
 
     var phoneNFCIsActive: Bool {
         lock.lock()
@@ -206,13 +207,60 @@ final class Libre2SessionStore {
 
     // MARK: - Phone NFC and explicit reclaim
 
-    /// Transient exclusion prevents a transfer from overtaking a normal NFC scan.
-    func beginPhoneNFC() throws {
+    /// An ordinary scan remains available after deletion or an unresolved handoff. Only scans
+    /// superseding experimental state require journal writes and a fresh streaming code.
+    func beginPhoneNFC(resetUnlockCode: UInt32? = nil) throws {
         lock.lock()
         defer { lock.unlock() }
-        guard record.owner == .phone, !nfcActive else { throw Libre2HandoffError.invalidTransition }
+        guard !nfcActive else { throw Libre2HandoffError.invalidTransition }
+        if record.hasExperimentalState {
+            guard let code = resetUnlockCode, code != 42,
+                  code <= UInt32.max - UInt32(UInt16.max),
+                  code != record.session?.unlockCode, code != record.reclaim?.unlockCode,
+                  code != record.phoneNFCResetCode else { throw Libre2HandoffError.invalidSession }
+            try updateRecord { record in
+                if let id = record.session?.id { record.retiredIDs.insert(id) }
+                // Failed here means a new scan is needed, never permission to reconnect with
+                // the old credentials. Cancellation/restart leaves ordinary NFC available.
+                record.owner = .failed
+                record.session = nil
+                record.reclaim = nil
+                record.phoneNFCResetCode = code
+            }
+        }
+        confirmedNFCResetCode = nil
         nfcActive = true
         NotificationCenter.default.post(name: Self.didChange, object: self)
+    }
+
+    /// Confirmation is transient: after interruption, another scan must provision the sensor.
+    func confirmPhoneNFCReset(unlockCode: UInt32) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard nfcActive, record.owner == .failed, record.phoneNFCResetCode == unlockCode else {
+            throw Libre2HandoffError.staleSession
+        }
+        confirmedNFCResetCode = unlockCode
+    }
+
+    /// Called after NFC enabled streaming and the previous phone BLE connection closed.
+    /// Match this attempt's code so a delayed completion cannot finish a later reset.
+    func finishPhoneNFCReset(unlockCode: UInt32, sensorUID: Data) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard nfcActive, record.owner == .failed, record.phoneNFCResetCode == unlockCode,
+              confirmedNFCResetCode == unlockCode, sensorUID.count == 8 else {
+            throw Libre2HandoffError.staleSession
+        }
+        try updateRecord { record in
+            record.phoneNFCResetCode = nil
+            // Keep the newly provisioned credentials so restart and later ordinary scans
+            // cannot fall back to a streaming code held by a retired Watch session.
+            record.reclaim = Libre2ReclaimState(
+                id: UUID(), sensorUID: sensorUID, unlockCode: unlockCode, nfcConfirmed: true)
+            record.owner = .phone
+        }
+        endPhoneNFC()
     }
 
     func endPhoneNFC() {
@@ -220,6 +268,7 @@ final class Libre2SessionStore {
         defer { lock.unlock() }
         guard nfcActive else { return }
         nfcActive = false
+        confirmedNFCResetCode = nil
         NotificationCenter.default.post(name: Self.didChange, object: self)
     }
 
@@ -235,6 +284,7 @@ final class Libre2SessionStore {
             if let session = record.session, (try? session.validate()) == nil { record.session = nil }
             let attempt = Libre2ReclaimState(id: UUID(), sensorUID: sensorUID, unlockCode: unlockCode)
             record.reclaim = attempt
+            record.phoneNFCResetCode = nil
             record.owner = .reclaimingPhone
             return attempt
         }
@@ -268,14 +318,18 @@ final class Libre2SessionStore {
         }
     }
 
-    /// A revoke targets one old handoff, so a delayed revoke cannot stop a newer session.
-    func revokeOnWatch(_ session: Libre2WatchSession) throws {
-        try updateRecord { record in
-            guard let existing = record.session, existing.matchesHandoff(session) else {
-                throw Libre2HandoffError.staleSession
-            }
+    /// Retire even an unseen handoff: queued revocation can overtake PREPARE. Return true
+    /// only when its collector must stop; a late revoke must not stop a newer session.
+    @discardableResult
+    func revokeOnWatch(_ session: Libre2WatchSession) throws -> Bool {
+        try session.validate()
+        return try updateRecord { record in
             record.retiredIDs.insert(session.id)
+            guard let existing = record.session, existing.matchesHandoff(session) else {
+                return false
+            }
             record.owner = .releasingWatch
+            return true
         }
     }
 
@@ -406,6 +460,11 @@ final class Libre2SessionStore {
             record = try JSONDecoder().decode(Libre2OwnershipRecord.self, from: Data(contentsOf: fileURL))
             try record.session?.validate()
             try record.reclaim?.validate()
+            if let code = record.phoneNFCResetCode {
+                guard record.owner == .failed, code != 42, code <= UInt32.max - UInt32(UInt16.max) else {
+                    throw Libre2HandoffError.invalidSession
+                }
+            }
             if [.reclaimingPhone, .verifyingPhone].contains(record.owner) {
                 guard record.reclaim != nil else { throw Libre2HandoffError.invalidSession }
                 if record.owner == .verifyingPhone, record.reclaim?.nfcConfirmed != true {

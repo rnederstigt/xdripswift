@@ -480,6 +480,7 @@ import AppIntents
         
         // if bg post processing changes, update the chart
         NotificationCenter.default.addObserver(self, selector: #selector(handleBgPostProcessingDidUpdate), name: Notification.Name(ConstantsNotifications.NotificationIdentifierForBgPostProcessing.bgPostProcessingDidUpdate), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleDirectLibreHistoryDidImport), name: Libre2PhoneHistorySync.didImport, object: nil)
         
         // setup delegate for UNUserNotificationCenter
         UNUserNotificationCenter.current().delegate = self
@@ -1935,6 +1936,15 @@ import AppIntents
         }
     }
     
+    /// Historical imports refresh normal displays/uploads, without invoking new-reading alarms
+    /// or treating a database reading as proof of a fresh iPhone BLE login.
+    @objc private func handleDirectLibreHistoryDidImport() {
+        rootHomeStateModel.invalidateCharts()
+        updateLabelsAndChart(overrideApplicationState: true)
+        watchManager?.updateWatchApp(forceComplicationUpdate: true)
+        updateLiveActivityAndWidgets(forceRestart: false)
+    }
+
     @objc private func handleBgPostProcessingDidUpdate() {
         updateLabelsAndChart(overrideApplicationState: true, forceReset: true)
         updatePostProcessingStatus()

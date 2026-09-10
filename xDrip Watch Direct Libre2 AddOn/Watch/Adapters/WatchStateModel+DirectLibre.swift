@@ -22,6 +22,7 @@ extension WatchStateModel: Libre2WatchDisplay {
         lastUpdatedTextString = Texts_WatchApp.lastReading + " "
         lastUpdatedTimeString = bgReadingDates[0].formatted(date: .omitted, time: .shortened)
         lastUpdatedTimeAgoString = bgReadingDates[0].daysAndHoursAgo(appendAgo: true)
+        // Direct collection bypasses the host payload dispatcher and needs its own refresh.
         updateComplicationData()
     }
 

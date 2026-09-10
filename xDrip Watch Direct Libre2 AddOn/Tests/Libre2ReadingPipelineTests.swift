@@ -16,7 +16,7 @@ final class Libre2ReadingPipelineTests: XCTestCase {
         XCTAssertEqual(result, frame + [sample(180, 93)])
     }
 
-    func testBothReadingSourcesRejectMalformedOrOlderUpdates() {
+    func testDirectReadingsRejectMalformedOrOlderUpdates() {
         let valid = Libre2ReadingBatch(values: [110], dates: [now.timeIntervalSince1970], slope: 4, delta: 0, generatedAt: now)
         XCTAssertTrue(valid.isAcceptable(after: now.addingTimeInterval(-60), now: now))
         XCTAssertTrue(valid.isAcceptable(after: now, now: now))
@@ -27,7 +27,7 @@ final class Libre2ReadingPipelineTests: XCTestCase {
         }
     }
 
-    func testReadingFreshnessAndFutureTimestampBoundsRemainUnchanged() {
+    func testDirectReadingFreshnessAndFutureTimestampBounds() {
         for (age, accepted) in [(3599.0, true), (3600, false), (-30, true), (-31, false)] {
             let batch = Libre2ReadingBatch(values: [110], dates: [now.addingTimeInterval(-age).timeIntervalSince1970], slope: 4, delta: 0, generatedAt: now)
             XCTAssertEqual(batch.isAcceptable(after: nil, now: now), accepted)
