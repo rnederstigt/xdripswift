@@ -2,7 +2,7 @@
 
 This checkout adds an opt-in, foreground Libre 2 connection experiment. All switching and recovery controls are on iPhone. The Watch has a direct-connection indicator and accepts commands from its paired phone.
 
-Base: xDrip4iOS `53b3d6bf1b550c99b19c3d5d2c2f80dd226465d8` (7.0.0 build 4231). Branch: `experimental/phone-controlled-libre-watch`. The experiment is contained in this add-on directory with the original-app hooks documented in INTEGRATION.md; it does not require Loop changes.
+Base: xDrip4iOS `53b3d6bf1b550c99b19c3d5d2c2f80dd226465d8` (7.0.0 build 4231). Branch: `experimental/libre2watch`. The experiment is contained in this add-on directory with the original-app hooks documented in INTEGRATION.md; it does not require Loop changes.
 
 ## Experimental workflow
 
