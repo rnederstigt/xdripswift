@@ -226,7 +226,7 @@ class CGMLibre2Transmitter: BluetoothTransmitter, CGMTransmitter {
     override func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         super.peripheral(peripheral, didUpdateValueFor: characteristic, error: error)
         // An NFC reset may have replaced the UID while the old BLE connection is closing.
-        guard Libre2SessionStore.shared.snapshot.phoneNFCResetCode == nil else { return }
+        guard directLibre.allowsIncomingReadings else { return }
         
         // there should be already stored a value for libreSensorUID in the userdefaults at this moment, otherwise processing is not possible
         guard let libreSensorUID = UserDefaults.standard.libreSensorUID else {
@@ -508,12 +508,10 @@ extension CGMLibre2Transmitter: LibreNFCDelegate {
     
     func streamingEnabled(successful: Bool) {
         if successful {
-            let previousCounter = UserDefaults.standard.libreActiveSensorUnlockCount
             guard directLibre.didEnableNFCStreaming() else { return }
             trace("received streaming enabled message from NFC with result successful, setting unlockCount to 0", log: log, category: ConstantsLog.categoryCGMLibre2, type: .info)
             
             UserDefaults.standard.libreActiveSensorUnlockCount = 0
-            directLibre.didResetNFCCounter(from: previousCounter)
 
         } else {
             trace("received streaming enabled message from NFC with result unsuccessful", log: log, category: ConstantsLog.categoryCGMLibre2, type: .info)
@@ -571,8 +569,7 @@ extension CGMLibre2Transmitter: LibreNFCDelegate {
     }
     
     func startBLEScanning() {
-        if Libre2SessionStore.shared.phoneNFCIsActive,
-           Libre2SessionStore.shared.snapshot.phoneNFCResetCode != nil {
+        if directLibre.isNFCResetScan {
             directLibre.finishNFCReset { [weak self] in self?.startBLEScanningAfterReset() }
         } else {
             _ = super.startScanning()

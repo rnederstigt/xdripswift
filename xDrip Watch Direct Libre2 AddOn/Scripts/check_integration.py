@@ -42,8 +42,11 @@ for area, target in (("iPhone", "xdrip"), ("Watch", "xDrip Watch App")):
     assert not expected & source_sets[other], f"{area} code included in the wrong target"
 
 shared = set((addon / "Shared").rglob("*.swift"))
-assert shared <= source_sets["xDrip Watch App"], "Watch is missing shared helpers"
-# The phone retains its original PreLibre2/crypto/parser, so not every protocol helper belongs in iOS.
+phone_only = {"Libre2Checklist.swift", "Libre2PhoneSwitchAction.swift", "Libre2PhoneReadingStatus.swift", "Libre2HistoryRegistry.swift"}
+watch_shared = {path for path in shared if path.name not in phone_only}
+assert watch_shared <= source_sets["xDrip Watch App"], "Watch is missing shared helpers"
+assert not {path for path in shared if path.name in phone_only} & source_sets["xDrip Watch App"], "Phone-only helpers must not ship on Watch"
+# The phone retains its original crypto/parser, so the Watch protocol port stays out of iOS.
 assert shared <= source_sets["xdrip"] | source_sets["xDrip Watch App"]
 assert not set((addon / "Tests").rglob("*.swift")) & set.union(*source_sets.values()), "Host tests must not ship in the app"
 print("Add-on membership and platform separation verified.")

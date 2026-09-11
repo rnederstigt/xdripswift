@@ -21,6 +21,8 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
 
     static var hasExperimentalState: Bool { Libre2SessionStore.shared.snapshot.hasExperimentalState }
 
+    var allowsIncomingReadings: Bool { Libre2SessionStore.shared.snapshot.phoneNFCResetCode == nil }
+
     static var allowsBluetoothActivity: Bool {
         Libre2SessionStore.shared.snapshot.owner.allowsPhoneConnection
     }
@@ -55,18 +57,8 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
     var isConnected: Bool { transmitter?.getConnectionStatus() == .connected }
     var usesNativeAlgorithm: Bool { transmitter?.isWebOOPEnabled() == true }
     func connect() { transmitter?.connect() }
-    func disconnect() { transmitter?.disconnect() }
     func disconnect(completion: @escaping () -> Void) { transmitter?.disconnect(completion: completion) }
     func startBLEScanning() { transmitter?.startBLEScanning() }
-
-    func applyNFCReading(sensorUID: Data, patchInfo: Data, fram: Data) {
-        transmitter?.received(sensorUID: sensorUID, patchInfo: patchInfo)
-        transmitter?.received(fram: fram)
-    }
-
-    func expectedDevice(serialNumber: String, macAddress: String) {
-        transmitter?.nfcScanExpectedDevice(serialNumber: serialNumber, macAddress: macAddress)
-    }
 
     // MARK: - BLE authentication and readings
 
@@ -186,7 +178,6 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
                 code = candidate
             }
             try store.beginPhoneNFC(resetUnlockCode: code)
-            reportAuthentication("NFC started; counter \(UserDefaults.standard.libreActiveSensorUnlockCount); Direct Libre reset: \(code != nil).")
             ownsNFCScan = true
             resetUnlockCode = store.snapshot.phoneNFCResetCode
             if resetUnlockCode != nil {
@@ -203,10 +194,8 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
             }
             return true
         } catch {
-            DispatchQueue.main.async { [weak self] in
-                self?.transmitter?.bluetoothTransmitterDelegate?.error(message: error.localizedDescription)
-                Libre2PhoneHandoff.shared.status = error.localizedDescription
-            }
+            // Experimental errors belong to the Advanced Settings page, never a global sensor alert.
+            DispatchQueue.main.async { Libre2PhoneHandoff.shared.status = error.localizedDescription }
             return false
         }
     }
@@ -235,16 +224,12 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
         return true
     }
 
-    func didResetNFCCounter(from previous: UInt16) {
-        reportAuthentication("NFC counter reset: \(previous) → \(UserDefaults.standard.libreActiveSensorUnlockCount); next BLE unlock will advance the counter.")
-    }
-
     func unlockWasWithheld(_ reason: String) {
         reportAuthentication("Libre unlock withheld: \(reason). Counter \(UserDefaults.standard.libreActiveSensorUnlockCount).")
     }
 
     private func reportAuthentication(_ message: String) {
-        DispatchQueue.main.async { Libre2ActivityLog.shared.record(message, force: true) }
+        DispatchQueue.main.async { Libre2ActivityLog.shared.record(message) }
     }
 
     func endNFC() {

@@ -7,9 +7,6 @@ protocol Libre2PhoneSensor: AnyObject {
     var usesNativeAlgorithm: Bool { get }
     func prepareDirectWatch(completion: @escaping (Result<Libre2WatchSession, Error>) -> Void)
     func connect()
-    func disconnect()
     func disconnect(completion: @escaping () -> Void)
     func startBLEScanning()
-    func applyNFCReading(sensorUID: Data, patchInfo: Data, fram: Data)
-    func expectedDevice(serialNumber: String, macAddress: String)
 }

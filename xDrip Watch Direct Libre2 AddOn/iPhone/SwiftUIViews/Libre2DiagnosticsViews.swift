@@ -32,20 +32,20 @@ struct Libre2ChecklistView: View {
 
     private func checklistRow(_ item: Libre2ChecklistItem) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: item.isSatisfied == true ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(item.isSatisfied == true ? .green : .secondary)
+            Image(systemName: item.isSatisfied ? "checkmark.circle.fill" : "circle")
+                .foregroundColor(item.isSatisfied ? .green : .secondary)
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
-                if item.isSatisfied != true || item.showsDetailWhenSatisfied {
+                if !item.isSatisfied || item.showsDetailWhenSatisfied {
                     Text(item.detail).font(.caption).foregroundColor(.secondary)
                 }
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(
-            item.isSatisfied == true
+            item.isSatisfied
                 ? Texts_DirectLibre.checkPassed
-                : (item.isSatisfied == nil ? Texts_DirectLibre.checkWaiting : Texts_DirectLibre.checkMissing))
+                : Texts_DirectLibre.checkMissing)
     }
 }
 

@@ -1,20 +1,10 @@
 # xDrip4iOS
 
-## Experimental Direct Libre 2 connection to Apple Watch
+## Experimental Direct Libre 2 Watch connection
 
-This branch adds a **phone-controlled, foreground proof of concept** for switching a Libre 2 Bluetooth connection between xDrip on iPhone and its companion Apple Watch app.
+This branch adds a phone-controlled foreground prototype. Start with valid Libre BLE readings on iPhone, then use **Settings → Advanced Settings → Direct Libre (Experimental)** to switch to Watch or return. Direct readings synchronize back to the phone; the Watch shows a green/grey antenna beside their age.
 
-- All controls are in **Settings → Advanced Settings → Direct Libre (Experimental)** on iPhone.
-- One button switches to Watch or back to iPhone. The page includes a readiness checklist, connection verification, recovery guidance and recent activity. Ordinary Watch relay behavior is preserved; see the [isolation notes](<xDrip Watch Direct Libre2 AddOn/BEHAVIOR_ISOLATION.md>).
-- In Direct Watch mode, an antenna before the reading age is green when connected with fresh direct glucose, or grey when waiting, disconnected or stale.
-- New Direct Watch measurements are saved on Watch and synchronised to the phone with repeat-safe, acknowledged uploads.
-- Start with xDrip already receiving valid Libre BLE readings. Build matching iPhone and Watch apps from this branch and keep them open during testing.
-
-See the **[setup, switching workflow, architecture and device test checklist](<xDrip Watch Direct Libre2 AddOn/README.md>)** before trying the experiment. This is a foreground prototype: continuous background collection, Watch alarms and sensor backfill are not implemented. See [phone history synchronisation](<xDrip Watch Direct Libre2 AddOn/HISTORY_SYNC.md>) for the new upload workflow. An ordinary NFC scan used to reset Direct Libre reprovisions sensor credentials and may disrupt other apps' connections or alarms.
-
-Validation performed during development: **62 host tests passed**, plus iPhone and Watch SDK source checks. Full signed builds and the device acceptance sequence are not covered by those automated checks.
-
-The upstream xDrip4iOS introduction follows below.
+See the [add-on guide](<xDrip Watch Direct Libre2 AddOn/README.md>) for setup, NFC recovery, limitations, validation and the complete integration/audit map. Continuous background monitoring, Watch alarms and sensor backfill are not implemented.
 
 ---
 

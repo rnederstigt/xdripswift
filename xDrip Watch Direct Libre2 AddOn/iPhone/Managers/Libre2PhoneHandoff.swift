@@ -1,6 +1,4 @@
 import Combine
-import CoreBluetooth
-import CoreNFC
 import Foundation
 import WatchConnectivity
 
@@ -31,22 +29,6 @@ final class Libre2PhoneHandoff: ObservableObject {
     private var lastReachability: Bool?
     private var lastWatchState: [Bool] = []
     private var lastSettings: ChecklistSettings?
-    private var verificationTimeout: DispatchWorkItem?
-    private var reclaimReader: Libre2PhoneReclaim?
-    @Published private(set) var isReclaiming = false
-
-    private var reclaimSensorUID: Data? {
-        if let uid = store.snapshot.session?.sensorUID, uid.count == 8 { return uid }
-        if let uid = UserDefaults.standard.libreSensorUID, uid.count == 8 { return uid }
-        return nil
-    }
-
-    var canReclaim: Bool {
-        !isReclaiming && !isStarting && !store.phoneNFCIsActive && sensor != nil
-            && reclaimSensorUID != nil
-            && NFCTagReaderSession.readingAvailable
-    }
-
     var owner: Libre2Owner { store.snapshot.owner }
     var canCancel: Bool {
         [.preparingWatch, .releasingPhone, .watch, .returnRequested, .returningToPhone].contains(owner) && store.snapshot.session != nil
@@ -58,97 +40,8 @@ final class Libre2PhoneHandoff: ObservableObject {
         WCSession.default.activationState == .activated && WCSession.default.isReachable
     }
 
-    var isPending: Bool {
-        store.snapshot.owner != .phone
-    }
-
-    var checklistGroups: [Libre2ChecklistGroup] {
-        let session = WCSession.default
-        let activated = session.activationState == .activated
-        return [
-            Libre2ChecklistGroup(
-                id: .watch, title: Texts_DirectLibre.watchAppSection,
-                items: [
-                    Libre2ChecklistItem(
-                        id: "installed", title: Texts_DirectLibre.watchAppReady, detail: Texts_DirectLibre.watchInstalledHelp,
-                        isSatisfied: activated && session.isPaired && session.isWatchAppInstalled),
-                    Libre2ChecklistItem(
-                        id: "reachable", title: Texts_DirectLibre.watchReachable, detail: Texts_DirectLibre.reachabilityHelp,
-                        isSatisfied: reachable),
-                ]),
-            Libre2ChecklistGroup(
-                id: .sensor, title: Texts_DirectLibre.sensorSection,
-                items: [
-                    Libre2ChecklistItem(
-                        id: "master", title: Texts_DirectLibre.masterMode, detail: Texts_DirectLibre.masterHelp,
-                        isSatisfied: UserDefaults.standard.isMaster),
-                    Libre2ChecklistItem(
-                        id: "native", title: Texts_DirectLibre.nativeAlgorithm, detail: Texts_DirectLibre.nativeHelp,
-                        isSatisfied: sensor?.usesNativeAlgorithm == true),
-                    Libre2ChecklistItem(
-                        id: "unlock", title: Texts_DirectLibre.unlockEnabled, detail: Texts_DirectLibre.unlockHelp,
-                        isSatisfied: !UserDefaults.standard.suppressUnLockPayLoad),
-                ]),
-            Libre2ChecklistGroup(
-                id: .phone, title: Texts_DirectLibre.phoneConnectionSection,
-                items: [
-                    Libre2ChecklistItem(
-                        id: "connected", title: Texts_DirectLibre.phoneConnected, detail: Texts_DirectLibre.phoneConnectedHelp,
-                        isSatisfied: sensor?.isConnected == true),
-                    Libre2ChecklistItem(
-                        id: "reading", title: Texts_DirectLibre.freshReading, detail: readingDetail,
-                        showsDetailWhenSatisfied: true, isSatisfied: readingStatus.hasRecentReading()),
-                    Libre2ChecklistItem(
-                        id: "phoneLogin", title: Texts_DirectLibre.phoneLoginVerified, detail: Texts_DirectLibre.phoneLoginHelp,
-                        isSatisfied: readingStatus.hasRecentVerifiedReading()
-                            && readingStatus.verifiedUnlockCode == UserDefaults.standard.libreActiveSensorUnlockCode),
-                ], note: owner.allowsPhoneConnection ? nil : Texts_DirectLibre.phoneConnectionPaused),
-        ]
-    }
-
-    var switchButtonTitle: String {
-        switch store.snapshot.phoneSwitchAction {
-        case .switchToWatch: return Texts_DirectLibre.connectToWatch
-        case .returnToPhone:
-            return [.returnRequested, .returningToPhone].contains(owner)
-                ? Texts_DirectLibre.retryReturnToPhone : Texts_DirectLibre.cancelReturn
-        case .retryPhoneRecovery: return Texts_DirectLibre.retryPhoneConnection
-        case .unavailable: return Texts_DirectLibre.cancelReturn
-        }
-    }
-
-    var switchButtonSymbol: String {
-        store.snapshot.phoneSwitchAction == .switchToWatch ? "applewatch" : "iphone"
-    }
-
-    var canSwitchDevice: Bool {
-        guard !isStarting, !isReclaiming, !isVerifyingPhoneConnection, !store.phoneNFCIsActive else { return false }
-        switch store.snapshot.phoneSwitchAction {
-        case .switchToWatch: return canStart
-        case .returnToPhone: return canCancel
-        case .retryPhoneRecovery: return sensor != nil
-        case .unavailable: return false
-        }
-    }
-
-    /// Cancellation and retry reuse the existing protocol; this never changes ownership directly.
-    func switchDevice() {
-        guard canSwitchDevice else { return }
-        switch store.snapshot.phoneSwitchAction {
-        case .switchToWatch: start()
-        case .returnToPhone: cancelAndReturn()
-        case .retryPhoneRecovery: retry()
-        case .unavailable: break
-        }
-    }
-
-    private var readingDetail: String {
-        guard let date = readingStatus.lastReadingAt else { return Texts_DirectLibre.noPhoneBLEReading }
-        return Texts_DirectLibre.lastPhoneBLEReading(date)
-    }
-
     var canVerifyPhoneConnection: Bool {
-        owner == .phone && !isStarting && !isReclaiming && !isVerifyingPhoneConnection
+        owner == .phone && !isStarting && !isVerifyingPhoneConnection
             && !store.phoneNFCIsActive && sensor?.isConnected == true
             && !UserDefaults.standard.suppressUnLockPayLoad
     }
@@ -169,8 +62,8 @@ final class Libre2PhoneHandoff: ObservableObject {
     }
 
     var canStart: Bool {
-        owner == .phone && !isStarting && !isReclaiming && !isVerifyingPhoneConnection && !store.phoneNFCIsActive
-            && checklistGroups.flatMap(\.items).allSatisfy { $0.isSatisfied == true }
+        owner == .phone && !isStarting && !isVerifyingPhoneConnection && !store.phoneNFCIsActive
+            && checklistGroups.flatMap(\.items).allSatisfy { $0.isSatisfied }
     }
 
     func recordReachability() {
@@ -183,7 +76,7 @@ final class Libre2PhoneHandoff: ObservableObject {
         guard lastReachability != reachable else { return }
         lastReachability = reachable
         Libre2ActivityLog.shared.record(reachable ? Texts_DirectLibre.watchReachableLog : Texts_DirectLibre.watchUnreachableLog)
-        if reachable, store.snapshot.reclaim != nil { notifyWatchOfReclaim() }
+
     }
 
     /// Called on main for connection, ownership or freshness changes; never sends a radio request.
@@ -225,8 +118,8 @@ final class Libre2PhoneHandoff: ObservableObject {
         sensor.prepareDirectWatch { result in
             self.isStarting = false
             switch result {
-            case .success:
-                self.retry()
+            case .success(let session):
+                self.prepareWatch(session)
             case .failure(let error):
                 self.status = error.localizedDescription
             }
@@ -250,74 +143,6 @@ final class Libre2PhoneHandoff: ObservableObject {
         }
     }
 
-    /// Phone recovery never depends on Watch reachability or acknowledgement.
-    func reclaimViaNFC() {
-        guard canReclaim, let sensor,
-            let uid = reclaimSensorUID
-        else { return }
-        do {
-            var code = UInt32.random(in: 1...(UInt32.max - UInt32(UInt16.max)))
-            while code == 42 || code == UserDefaults.standard.libreActiveSensorUnlockCode || code == store.snapshot.session?.unlockCode
-                || code == store.snapshot.reclaim?.unlockCode
-            {
-                code = UInt32.random(in: 1...(UInt32.max - UInt32(UInt16.max)))
-            }
-            let attempt = try store.beginReclaim(sensorUID: uid, unlockCode: code)
-            isReclaiming = true
-            readingStatus = Libre2PhoneReadingStatus()
-            isVerifyingPhoneConnection = false
-            sensor.disconnect()
-            notifyWatchOfReclaim()
-            status = Texts_DirectLibre.reclaimScanning
-            reclaimReader = Libre2PhoneReclaim(
-                sensor: sensor, attempt: attempt,
-                status: { [weak self] in self?.status = $0 },
-                finished: { [weak self] in
-                    // NFC delegates issue expected-device/start-BLE callbacks immediately afterward.
-                    DispatchQueue.main.async {
-                        self?.isReclaiming = false
-                        self?.reclaimReader = nil
-                        self?.scheduleVerificationTimeout()
-                    }
-                })
-            reclaimReader?.start()
-        } catch { status = error.localizedDescription }
-    }
-
-    private func scheduleVerificationTimeout() {
-        verificationTimeout?.cancel()
-        guard let id = store.snapshot.reclaim?.id else { return }
-        let item = DispatchWorkItem { [weak self] in
-            guard let self, self.store.snapshot.reclaim?.id == id,
-                self.owner == .verifyingPhone || self.owner == .reclaimingPhone
-            else { return }
-            self.status = Texts_DirectLibre.reclaimNotVerified
-        }
-        verificationTimeout = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 45, execute: item)
-    }
-
-    private func retryReclaimVerification() {
-        guard let id = store.snapshot.reclaim?.id else { return }
-        status = Texts_DirectLibre.reclaimVerifying
-        sensor?.disconnect {
-            do {
-                try self.store.beginReclaimVerification(id: id)
-                self.sensor?.connect()
-                self.scheduleVerificationTimeout()
-            } catch { self.status = error.localizedDescription }
-        }
-    }
-
-    private func notifyWatchOfReclaim() {
-        guard reachable, let old = store.snapshot.session else { return }
-        do {
-            let message = try Libre2HandoffMessage(kind: .revoke, session: old).dictionary
-            WCSession.default.sendMessage(message, replyHandler: { _ in }, errorHandler: { _ in })
-            Libre2ActivityLog.shared.record(Texts_DirectLibre.revokeSent)
-        } catch { Libre2ActivityLog.shared.record(error.localizedDescription) }
-    }
-
     func didUpdatePhoneReadingStatus(_ snapshot: Libre2PhoneReadingStatus) {
         guard owner.allowsPhoneConnection else { return }
         let hadRecentReading = readingStatus.hasRecentReading()
@@ -329,44 +154,6 @@ final class Libre2PhoneHandoff: ObservableObject {
         if !hadVerifiedReading && snapshot.hasRecentVerifiedReading() {
             Libre2ActivityLog.shared.record(Texts_DirectLibre.phoneLoginVerified)
             if status == Texts_DirectLibre.verifyingPhoneConnection { status = Texts_DirectLibre.phoneLoginVerified }
-        }
-        if owner == .verifyingPhone, let recovery = store.snapshot.reclaim,
-            snapshot.hasRecentVerifiedReading(), recovery.nfcConfirmed, recovery.unlockCode == snapshot.verifiedUnlockCode
-        {
-            do {
-                try store.confirmReclaimReading(id: recovery.id)
-                verificationTimeout?.cancel()
-                status = Texts_DirectLibre.reclaimVerified
-            } catch { status = error.localizedDescription }
-        }
-    }
-
-    /// Resume the saved phase; an uncertain transaction never enables phone Bluetooth.
-    func retry() {
-        if owner == .verifyingPhone || (owner == .reclaimingPhone && store.snapshot.reclaim?.nfcConfirmed == true) {
-            retryReclaimVerification()
-            return
-        }
-        guard let session = store.snapshot.session else {
-            status = Texts_DirectLibre.usePhoneRecovery
-            return
-        }
-
-        switch store.snapshot.owner {
-        case .preparingWatch:
-            prepareWatch(session)
-        case .releasingPhone:
-            disconnectPhoneAndActivateWatch(session)
-        case .returnRequested:
-            cancelAndReturn()
-        case .watch, .returningToPhone:
-            cancelAndReturn()
-        case .verifyingPhone:
-            retryReclaimVerification()
-        case .reclaimingPhone:
-            if store.snapshot.reclaim?.nfcConfirmed == true { retryReclaimVerification() } else { reclaimViaNFC() }
-        default:
-            status = Texts_DirectLibre.openBothAppsToReturn
         }
     }
 

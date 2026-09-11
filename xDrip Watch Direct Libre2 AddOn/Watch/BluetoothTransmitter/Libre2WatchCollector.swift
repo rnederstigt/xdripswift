@@ -27,7 +27,6 @@ final class Libre2WatchCollector: NSObject {
     private var connectionTimeoutWorkItem: DispatchWorkItem?
     private var reconnectWorkItem: DispatchWorkItem?
 
-    var bluetoothIsPoweredOn: Bool { centralManager.state == .poweredOn }
     var isConnected: Bool { peripheral?.state == .connected }
 
     // MARK: - Initialization
