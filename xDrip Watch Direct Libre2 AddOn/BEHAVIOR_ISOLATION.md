@@ -17,6 +17,10 @@ Routine activity logging requires either a visible experiment page or saved expe
 
 ## Explicit exceptions and diagnostics
 
+The minimal underwater foreground declaration is app-wide. It adds no controller, depth entitlement or collector calls, but the documented 30-minute frontmost preparation period may also affect ordinary phone-relay launches. Water Lock is manual. See [UNDERWATER.md](UNDERWATER.md). This is an intentional screen-behaviour difference from upstream.
+
+The Watch now persists the phone's last explicit glucose-unit preference and restores it before direct collection starts. Existing complication data provides a migration fallback. A fresh status message can update units during direct collection without accepting the phone's sensor status or readings; a missing unit field keeps the current choice. This intentionally also preserves units after a restart in ordinary relay mode. No new polling or connectivity requests are added.
+
 The counter-exhaustion safeguard remains: a stored counter of 65,535 prevents another increment/unlock rather than overflowing. This is an accepted defensive difference from upstream.
 
 A short-lived NFC-in-progress guard still excludes overlapping scan/handoff transactions. That coordination hook remains necessary for the add-on. The Advanced Settings entry, Bluetooth policy hooks and Watch capabilities also remain integration differences; this is not a claim of byte-for-byte upstream identity.
