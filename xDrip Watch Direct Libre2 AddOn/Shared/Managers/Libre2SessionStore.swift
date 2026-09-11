@@ -205,7 +205,7 @@ final class Libre2SessionStore {
         }
     }
 
-    // MARK: - Phone NFC and explicit reclaim
+    // MARK: - Ordinary NFC reset
 
     /// An ordinary scan remains available after deletion or an unresolved handoff. Only scans
     /// superseding experimental state require journal writes and a fresh streaming code.
@@ -272,52 +272,6 @@ final class Libre2SessionStore {
         NotificationCenter.default.post(name: Self.didChange, object: self)
     }
 
-    /// Reclaim is available even after journal failure. Persist the new code before touching the sensor.
-    func beginReclaim(sensorUID: Data, unlockCode: UInt32) throws -> Libre2ReclaimState {
-        try updateRecord { record in
-            guard !nfcActive, sensorUID.count == 8,
-                unlockCode <= UInt32.max - UInt32(UInt16.max),
-                unlockCode != record.session?.unlockCode,
-                unlockCode != record.reclaim?.unlockCode
-            else { throw Libre2HandoffError.invalidSession }
-            if let previous = record.session { record.retiredIDs.insert(previous.id) }
-            if let session = record.session, (try? session.validate()) == nil { record.session = nil }
-            let attempt = Libre2ReclaimState(id: UUID(), sensorUID: sensorUID, unlockCode: unlockCode)
-            record.reclaim = attempt
-            record.phoneNFCResetCode = nil
-            record.owner = .reclaimingPhone
-            return attempt
-        }
-    }
-
-    func confirmReclaimNFC(id: UUID) throws {
-        try updateRecord { record in
-            guard record.owner == .reclaimingPhone, record.reclaim?.id == id else {
-                throw Libre2HandoffError.staleSession
-            }
-            record.reclaim?.nfcConfirmed = true
-        }
-    }
-
-    func beginReclaimVerification(id: UUID) throws {
-        try updateRecord { record in
-            guard [.reclaimingPhone, .verifyingPhone].contains(record.owner),
-                record.reclaim?.id == id, record.reclaim?.nfcConfirmed == true
-            else { throw Libre2HandoffError.invalidTransition }
-            record.owner = .verifyingPhone
-        }
-    }
-
-    /// Fresh glucose is accepted only after a new phone login and the NFC/disconnect barrier.
-    func confirmReclaimReading(id: UUID) throws {
-        try updateRecord { record in
-            guard record.owner == .verifyingPhone, record.reclaim?.id == id,
-                record.reclaim?.nfcConfirmed == true
-            else { throw Libre2HandoffError.invalidTransition }
-            record.owner = .phone
-        }
-    }
-
     /// Retire even an unseen handoff: queued revocation can overtake PREPARE. Return true
     /// only when its collector must stop; a late revoke must not stop a newer session.
     @discardableResult
@@ -366,22 +320,6 @@ final class Libre2SessionStore {
             session.unlockCount += 1
             record.session = session
             return session
-        }
-    }
-
-    /// A successful phone NFC provisioning starts a new counter sequence.
-    func clearCompletedSessionAfterNFC() throws {
-        lock.lock()
-        defer { lock.unlock() }
-        guard record.owner == .phone else { throw Libre2HandoffError.invalidTransition }
-        // Ordinary NFC must not acquire a dependency on the experimental journal.
-        guard record.session != nil || record.reclaim != nil else { return }
-        try updateRecord { record in
-            guard record.owner == .phone else {
-                throw Libre2HandoffError.invalidTransition
-            }
-            record.session = nil
-            record.reclaim = nil
         }
     }
 
@@ -440,6 +378,7 @@ final class Libre2SessionStore {
         }
         var updatedRecord = record
         let result = try update(&updatedRecord)
+        guard updatedRecord != record else { return result }
         do {
             try persist(updatedRecord)
         } catch {

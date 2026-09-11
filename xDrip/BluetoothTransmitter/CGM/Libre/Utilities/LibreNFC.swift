@@ -97,7 +97,6 @@ class LibreNFC: NSObject, NFCTagReaderSessionDelegate {
     
     /// fixed unlock code to use
     private let unlockCode: UInt32
-    private let expectedSensorUID: Data?
     
     /// use to keep track of if a successful NFC scan has happened
     private var nfcScanSuccessful: Bool = false
@@ -110,9 +109,8 @@ class LibreNFC: NSObject, NFCTagReaderSessionDelegate {
     
     // MARK: - initalizer
     
-    init(libreNFCDelegate: LibreNFCDelegate, unlockCode: UInt32 = 42, expectedSensorUID: Data? = nil) {
+    init(libreNFCDelegate: LibreNFCDelegate, unlockCode: UInt32 = 42) {
         self.unlockCode = unlockCode
-        self.expectedSensorUID = expectedSensorUID
         self.libreNFCDelegate = libreNFCDelegate
     }
     
@@ -335,10 +333,6 @@ class LibreNFC: NSObject, NFCTagReaderSessionDelegate {
             self.traceBlockSize(systemInfo: systemInfo)
 
             let sensorUID = Data(tag.identifier.reversed())
-            if let expectedSensorUID, sensorUID != expectedSensorUID {
-                session.invalidate(errorMessage: Texts_DirectLibre.wrongReclaimSensor)
-                return
-            }
             guard patchInfo.count >= 6 else {
                 xdrip.trace("NFC: received patchInfo has length < 6", log: self.log, category: ConstantsLog.categoryLibreNFC, type: .info)
                 session.invalidate(errorMessage: TextsLibreNFC.nfcErrorMessageScanFailed)

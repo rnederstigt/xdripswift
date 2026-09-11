@@ -15,16 +15,15 @@ enum Libre2Owner: String, Codable {
     case releasingWatch
     /// Phone requested cancellation/return; stale forward callbacks must no longer activate Watch.
     case returnRequested
-    /// Explicit NFC recovery has started; phone BLE remains blocked.
+    /// Legacy NFC-reclaim phases are decoded for upgrades; recovery now uses ordinary NFC.
     case reclaimingPhone
-    /// NFC completed and the previous phone connection closed; a new phone login may proceed.
     case verifyingPhone
     /// Ownership is unresolved, including an interrupted NFC reset; BLE remains blocked.
     case failed
 
     // PREPARE freezes new authentication while the existing phone connection remains alive.
     var allowsPhoneConnection: Bool {
-        self == .phone || self == .verifyingPhone
+        self == .phone
     }
 
     var allowsWatchConnection: Bool {

@@ -1,129 +1,30 @@
-# Phone-controlled Direct Libre Watch proof of concept
+# Direct Libre 2 Watch add-on
 
-This checkout adds an opt-in, foreground Libre 2 connection experiment. All switching and recovery controls are on iPhone. The Watch has a direct-connection indicator and accepts commands from its paired phone.
+A phone-controlled prototype for moving an already working Libre 2 Bluetooth connection between xDrip on iPhone and its Apple Watch companion. Start with xDrip receiving fresh native Libre BLE readings. Loop is outside this implementation.
 
-Base: xDrip4iOS `53b3d6bf1b550c99b19c3d5d2c2f80dd226465d8` (7.0.0 build 4231). Branch: `experimental/libre2watch`. The experiment is contained in this add-on directory with the original-app hooks documented in INTEGRATION.md; it does not require Loop changes.
+## Use
 
-## Experimental workflow
+1. Build and install matching iPhone and Watch apps. Open both apps once to synchronize glucose units.
+2. On iPhone, open **Settings → Advanced Settings → Direct Libre (Experimental)**. The checklist shows companion availability, sensor settings and a recent authenticated phone reading.
+3. If glucose is arriving but the phone login has not been observed, use **Verify phone connection** in the checklist. This reconnects with existing credentials; it does not scan NFC.
+4. Tap **Connect to Watch**. Keep both apps open until the Watch's antenna beside the reading age turns green. Grey means connecting, disconnected or stale.
+5. Use the same phone button to return to iPhone or cancel an unfinished switch. An interrupted return can be retried with both apps open.
+6. If return cannot finish, use the ordinary Libre Add/Connect NFC scan. After Direct Libre use, this resets the experimental session and provisions fresh credentials for the scanned sensor. The old sensor and a reachable Watch are not prerequisites. A cancelled/failed reset requires another scan before phone BLE resumes.
 
-1. Build and install **both** the iPhone and companion Watch app from this checkout. Open `xdrip.xcworkspace`; use the existing signing configuration appropriate to your devices. This experiment has a separate WatchConnectivity message key and journal from the previous experiment; do not mix companion versions.
-2. Make xDrip the valid Libre owner using your manually verified procedure. Confirm ordinary iPhone NFC scanning and BLE glucose work first. The proof of concept requires master mode, the Libre **Native Algorithm**, valid sensor conversion parameters, and **Suppress Unlock Payload off**. The sensor must be past warm-up.
-3. Keep both apps open. On iPhone, open **Settings → Advanced Settings → Direct Libre (Experimental)**. This entry remains visible even when connection prerequisites fail, so recovery remains accessible. Check companion installation, communication activation, Watch reachability, phone BLE connection and a glucose reading less than three minutes old.
-If **Recent Libre reading** is checked but **Phone login and reading verified** is not, use **Verify phone connection** within the iPhone checklist group and wait for a new BLE reading. This reconnects with the existing credentials without an NFC scan; it also makes a restored stream’s phone login observable. The reading row shows the time of the latest actual BLE update.
+All experiment controls and error messages stay on the Advanced Settings page. Recent activity shows five entries initially, with **Show more**, up to 80 retained entries. The Watch adds only the reading-age antenna; it has no experiment control page.
 
-4. Tap **Switch to Watch**. The phone saves its current session, obtains Watch READY, disables its Libre reconnect path and waits for confirmed disconnect before activating Watch. The phone’s **Watch selected** state means activation was acknowledged; it is not a report that Watch has received glucose.
-5. On any Watch glucose page, look for the antenna icon **before** the reading age ("… mins ago"), replacing the usual dot in Direct Watch mode. **Green** requires a live local BLE connection and a direct reading less than three minutes old. **Grey** means the direct connection is waiting, disconnected or stale. Outside Direct Watch mode, the original dot returns. The same marker is used on the large-value, chart and AGP pages. For an additional observation, inspect the Watch’s Bluetooth settings while connected; accessory listing visibility is controlled by watchOS. The local collector and direct readings remain the application’s evidence of the connection.
-6. To return, use the same primary button, now labelled **Switch to iPhone**. This also cancels a pending outbound switch. During an interrupted return, the button reads **Retry return to iPhone**. Keep both apps open: Watch freezes and sends its latest attempted counter, waits for phone persistence, disconnects, then commits the return. Phone can reconnect only afterward. Verify a new phone glucose reading. Watch automatically retries an interrupted return acknowledgement while the app can run.
-7. If normal return cannot finish, use the ordinary Libre **Add/Connect NFC scan** on the phone. It resets Direct Libre without a reachable Watch and accepts the sensor being scanned, including a replacement after deletion. There is no separate **Reclaim via NFC** button.
-8. Keep phone Bluetooth on. After NFC succeeds, the reset waits for the previous phone BLE connection to close, then connects with fresh credentials. Confirm a new phone BLE glucose reading; NFC completion alone is not connection verification. If a reset scan fails or is cancelled, retry the ordinary scan. The add-on changes retry behavior only for scans resetting Direct Libre state. Ordinary scans without experimental state retain their prior behavior.
-9. The phone page initially shows five recent activity entries. **Show more** reveals five older entries at a time, up to the 80-entry persisted limit; **Show less** collapses the list again. Log browsing never changes sensor counters or ownership.
+New direct measurements are saved on Watch and acknowledged by the phone only after import into its original sensor's database record. Readings remain queued while delivery fails. Units survive Watch app restarts. Internal glucose values remain in mg/dL; display uses the phone's last explicit preference.
 
-There are no experiment controls in the Settings header/version area or on a separate Watch page. The ordinary sensor scan entry is also a hard-reset path, including after sensor deletion or an unresolved Direct Watch session. It accepts the sensor being scanned without requiring the old sensor or a reachable Watch. See [NFC_RESET.md](NFC_RESET.md) for recovery behavior and device checks.
+## Scope
 
-## Watch units and restarts
+This is an on-demand/foreground prototype. It adds no workout, continuous monitoring guarantee, Watch alarms, sensor backfill or automatic Water Lock. The Watch retains the agreed `underwater-depth` declaration for Apple's documented 30-minute frontmost preparation period. Enable/disable Water Lock manually; longer operation and reception through water require device testing.
 
-The Watch retains the phone's last explicit glucose-unit preference across app restarts, including when the phone is unreachable. Open both apps together once after installing to confirm the correct units. See [WATCH_RESTARTS.md](WATCH_RESTARTS.md) for the persistence check and collecting crash/termination reports.
+Ordinary NFC reset after Direct Libre use reprovisions streaming credentials and may disrupt another app's sensor connection. Phone control does not mean instantaneous disconnection of an unreachable Watch. See the integration guide for the distinction between software ownership and sensor provisioning.
 
-## Underwater foreground experiment
+## Read the implementation
 
-The Watch declares `underwater-depth` to use Apple’s documented 30-minute frontmost preparation period after launch. Water Lock is manual. There is no submersion controller, Motion permission request or custom runtime session. This app-wide configuration is independent of sensor ownership. See [UNDERWATER.md](UNDERWATER.md) for the workflow and device checks; indefinite foreground display and underwater BLE reception are not guaranteed.
+- [Integration map and protocol](Docs/INTEGRATION.md): start here to understand or port the feature into master.
+- [Audit against master](Docs/AUDIT.md): every original-file change, removals and intentional behavioural exceptions.
+- [Validation and device tests](Docs/TESTING.md): automated checks, build limitations and a concise testing workflow.
 
-## Phone history synchronisation
-
-New Direct Watch measurements are persisted on Watch and uploaded automatically to the phone
-when communication is available. Install both companions, collect readings as usual, then open
-both apps in range to verify the phone history fills in. The phone's **Recent activity** records
-imports. Pending readings survive return, NFC reclaim and Watch app restart, and are removed
-only after the phone acknowledges its database save. The Watch graph is unchanged.
-
-See [HISTORY_SYNC.md](HISTORY_SYNC.md) for storage, duplicate handling, limitations and the
-step-by-step device test. This does not add continuous monitoring, Watch alarms or sensor backfill.
-
-## What is implemented
-
-| Milestone | Implementation |
-| --- | --- |
-| Contained protocol reuse | Foundation-only Watch crypto, frame assembly, conversion and parsing under `Shared/Protocol/`. Phone retains its existing crypto and parser implementation unchanged. |
-| Phone control and persistence | Persisted session identity, credentials, calibration, counter and transaction phases. New phone BLE attempts are blocked outside phone/explicit reclaim verification phases. |
-| Forward switch | PREPARE → READY → confirmed phone disconnect → ACTIVATE. Watch creates its collector only after activation, or to close a previously saved connection. |
-| Watch collection | FDE3 service; persist counter increment before F001 write; subscribe F002 after the successful write callback, following the inspected DiaBLE ordering. Assemble 46-byte frames, authenticate/decrypt and convert using existing sensor parameters. |
-| Normal return/cancel | Phone requests return; Watch sends M; phone persists M; Watch disconnects; COMMIT enables phone. Next phone attempt is M+1. Lost acknowledgement retries cannot restore an older counter. |
-| Ordinary NFC reset | An ordinary scan supersedes abandoned Direct Libre state, retires the old handoff, and provisions the scanned sensor with fresh credentials. Phone BLE resumes after successful provisioning and confirmed phone disconnect. |
-| Existing recovery records | Saved recovery credentials and confirmed recovery retries from older builds remain supported. New recovery starts through ordinary Add/Connect NFC scanning. |
-| Display and diagnostics | Original phone-relay handler plus direct-only validation/display updates, one complication refresh per accepted update, direct/stale indicator, phone checklist/reachability/log. |
-| Phone history sync | Durable Watch outbox, batches of up to 120 measurements, original-sensor matching, repeat-safe imports and acknowledgements after persistent-store save. |
-| Project integration | Target memberships, Watch Bluetooth/underwater declarations and default DerivedData settings. Personal signing settings stay local. |
-
-The intended recovery property is **phone-controlled provisioning**, not guaranteed instantaneous remote disconnection. An unreachable Watch cannot be commanded to stop through WatchConnectivity. Whether the sensor immediately displaces an already authenticated Watch connection and refuses its previous code after reprovisioning must be established on physical hardware.
-
-## State and ordering rules
-
-- Phone stays connected during PREPARE, but new authentication attempts are frozen. Both devices save state before acknowledging a phase that could let the other device authenticate.
-- Phone owns the control plane; explicit persisted connection state still prevents competing BLE reconnects. Removing that state would not make switching safer.
-- Watch counters are reserved and synchronously persisted before payload generation/write. A failed write or disconnect never rolls a reservation back. Exhaustion fails instead of wrapping.
-- Returned and reclaimed phone counters are also saved in the experimental journal before writes. Ordinary phone use without an experimental session does not depend on experimental journal writes.
-- An ordinary NFC reset uses a random new unlock code with enough numeric headroom for every UInt16 counter. It retires the old handoff ID before NFC. A stale READY, ACTIVATE, return or revoke cannot supersede the new attempt.
-- Reset credentials are persisted before NFC begins. Phone BLE stays blocked until NFC succeeds and the previous connection closes; an interrupted reset requires another scan. Older explicit-reclaim records retain their confirmed-NFC verification/retry behavior.
-- The journal is stored in app Application Support at `PhoneControlledLibre/ownership.json`; logs use `phoneControlledLibreActivityLog`. Credentials are not included in this diagnostic log. Existing upstream developer traces are unchanged.
-
-## Add-on layout and review order
-
-All experimental sources, host tests and this documentation are inside this directory. Xcode presents the same folder hierarchy. This is a source add-on compiled into the existing application targets; it is not a runtime plug-in or a separate distributable framework.
-
-1. `Shared/Session/`: session format, ownership, recovery state, persistence and message types. These preserve the original prototype's on-disk keys and transaction ordering.
-2. `iPhone/Libre2PhoneHandoff.swift` and `Watch/Libre2WatchHandoff.swift`: forward/return/recovery coordination over the existing WatchConnectivity session.
-3. `iPhone/Libre2PhoneSensor.swift` and `iPhone/Adapters/Libre2PhoneSensorAdapter.swift`: the sensor interface and the mapping to the existing iPhone transmitter. The adapter owns freshness, login observation, credential restoration and session preparation. `iPhone/Libre2PhoneReclaim.swift` adapts the existing NFC reader.
-4. `Watch/Libre2WatchCollector.swift` and `Shared/Protocol/`: Watch BLE collection and the existing protocol algorithms. The iPhone retains its original crypto/parser implementation.
-5. `Watch/Libre2WatchAddOn.swift`, `Watch/Adapters/WatchStateModel+DirectLibre.swift` and `Shared/Readings/Libre2ReadingPipeline.swift`: source selection, history merging, trend calculation, reading validation and the bridge to existing Watch display/complication updates.
-6. `iPhone/UI/`, `Watch/UI/` and `Shared/Diagnostics/`: Advanced Settings entry, checklist, controls, log, indicator and text.
-7. `Shared/Readings/Libre2History*.swift`, `Watch/Libre2WatchHistorySync.swift` and `iPhone/Libre2PhoneHistorySync.swift`: upload schema, durable outbox, sensor registry, transport and Core Data import.
-8. `Tests/` and `Package.swift`: the host-test harness and hosted iPhone importer tests. `Scripts/check_integration.py` checks Xcode source paths and platform membership without building.
-
-See [INTEGRATION.md](INTEGRATION.md) for the complete list of changes outside this directory and why each is necessary.
-
-## Validation and remaining work
-
-- **75 focused host tests passed**, zero failures, including four Watch-unit persistence tests. Existing coverage includes session serialization, counter progression/persistence-before-write, exhaustion, protocol fixture/parsing, exclusive ownership, cancellation, delayed IDs, interrupted returns, bounded logs, normal-NFC isolation and reclaim recovery. Seven additional regressions cover ordinary NFC hard reset after deletion, retries/restart, stale completions and queued revocation. Two isolation regressions cover dormant logging and retained experimental credentials after returning to phone. Checklist regressions cover received-but-unverified BLE data, freshness bounds, reconnect reset and older observations. Switch-button regressions cover pending returns and confirmed NFC recovery. Four reading-pipeline regressions cover overlap replacement, malformed/out-of-order data, timestamp bounds and trend calculation after extraction into the add-on. Seven refresh regressions cover freshness deadlines, replacement/reset, clock rollback, ownership notification ordering and failed persistence, NFC activity and log change notifications.
-- **Native SDK Swift checks:** changed/add-on iPhone sources are checked against complete target declarations, and all Watch Swift inputs (including generated asset symbols). These validate Swift compilation/types, not asset processing, linking, signing or installation. The Xcode membership check also passes for both targets.
-- **Full iPhone and Watch Xcode builds:** both stopped at asset compilation because this environment could not access simulator runtimes (`No available simulator runtimes`). Signing was disabled for these validation attempts only. A full build, signing and installation have not been verified here.
-- **History tests:** 12 host regressions cover queue persistence/failure, immutable batches, acknowledgements, repeated sensor minutes, offline batches and sensor identity. Five hosted iPhone Core Data tests additionally cover disk-save acknowledgement/failure, duplicate imports, ended sensors and overlap; they require an available simulator/device to execute.
-- **No sensor/phone/Watch hardware tests were performed.** NFC regression checks, direct readings, reconnection and active-Watch displacement remain required.
-- This is a foreground proof of concept with an experimental underwater foreground declaration. There is no HKWorkoutSession mode, continuous-background guarantee, sensor backfill, new Watch alarm system or production reliability claim. The existing Watch complication update path is called, but its device behavior still needs testing.
-- `bluetooth-central` is declared for Watch, but it does not grant unlimited execution. Apple documents Bluetooth work within permitted background tasks; the underwater declaration provides a documented preparation period, while this prototype does not manage extended runtime sessions, and no restricted Bluetooth entitlement is used. [Apple: Using background tasks](https://developer.apple.com/documentation/watchkit/using-background-tasks).
-
-### Device acceptance sequence
-
-1. With Direct Libre unused, scan the working sensor normally; cancel and retry a scan; verify new phone BLE data. Confirm ordinary app behavior and signing for its embedded extensions.
-2. Switch to Watch; verify actual direct glucose and fresh timestamps. Observe phone remaining disconnected. Drop/reconnect Watch BLE and verify a higher counter is used.
-3. Return using the phone; verify fresh phone BLE data. Cancel during PREPARE and again after Watch activation. Test both apps being relaunched during each transfer phase.
-4. Interrupt communication around RETURN_COMMIT; verify automatic Watch acknowledgement retry does not overwrite a newer phone counter.
-5. Reset through ordinary Add/Connect NFC scanning with Watch reachable; then repeat with Watch actively connected but unreachable from the phone. Verify fresh phone authentication and glucose, and whether old-code Watch attempts are rejected. Record the sensor version and both OS versions.
-6. Cancel a Direct Libre reset scan and retry it, scan a replacement sensor, interrupt Bluetooth during recovery, and terminate/reopen the phone after NFC completion. Verify ordinary NFC remains available and no old callback restores an earlier session.
-7. Keep the experimental page visible while Watch reachability and phone Bluetooth change; confirm the checklist follows without navigating away. Stop incoming readings and confirm the fresh/verified rows and switch button expire three minutes after the last BLE reading. Resume readings, then leave/reopen the page and background/foreground the phone; confirm current state returns immediately. Check new activity entries appear without periodic refresh.
-8. On each Watch glucose page, verify green for fresh direct readings, grey after disconnection or three minutes without a reading, and the normal dot after returning to phone. No additional indicator clock should appear in a timer profile.
-9. Run the offline/return/restart history acceptance tests in [HISTORY_SYNC.md](HISTORY_SYNC.md).
-10. Only after these pass, consider a separate background/exercise milestone.
-
-### Reproducing host tests and keeping products outside the checkout
-
-From this checkout:
-
-```sh
-swift test --package-path "xDrip Watch Direct Libre2 AddOn" --scratch-path ../work/phone-poc-tests
-```
-
-Use Xcode's default DerivedData location. The project no longer specifies empty SYMROOT/OBJROOT/SHARED_PRECOMPS_DIR values, which could resolve products against `/` or the source folder. For command-line builds, explicitly set a DerivedData directory outside this checkout. The machine-specific precompiled bridging-header artifact inherited from the base was removed from this checkout only. Generated validation caches can be discarded without touching source. Local development logs are not included in this branch.
-
-## Build configuration and attribution
-
-Use your own Apple development team through the existing ignored `xDripConfigOverride.xcconfig` file at the repository root (set `XDRIP_DEVELOPMENT_TEAM` to your team ID). Keep personal signing overrides and credentials out of commits. Source sharing does not require setting up the inherited GitHub signing workflows or uploading signing secrets.
-
-The Watch protocol helpers are adapted from the Libre 2 implementation already present in [xDrip4iOS](https://github.com/JohanDegraeve/xdripswift); existing source notices, including the DiaBox notice in `PreLibre2.swift`, are retained. Inspection of [DiaBLE](https://github.com/gui-dos/DiaBLE) informed the F001/F002 ordering and explicit NFC reprovisioning approach. This branch retains the repository's original [licence](../LICENSE).
-
-## Refactor compatibility
-
-The refactor keeps sensor credentials, counter rules, ownership phases, WatchConnectivity message keys and persistence paths unchanged. It does not require a new NFC provisioning step just because source files moved. Build both companion apps from the same branch. The add-on no longer creates two-second UI refresh schedules. Connection, settings, ownership, readings and log events update the phone page. While the page is active, a single cancellable deadline updates freshness when needed. The Watch indicator reuses the upstream display clock and changes its local state only when receiving/freshness changes. The upstream Watch timer and radio-request behavior are unchanged; battery savings have not been measured.
-
-## Upstream behavior isolation
-
-Ordinary Watch relay retains the upstream reading handler and a single complication refresh. Additional phone receive-buffer resets require experimental state. Routine logging is gated to the visible experiment page or saved experimental state; counter/NFC troubleshooting is an explicit exception. See [BEHAVIOR_ISOLATION.md](BEHAVIOR_ISOLATION.md) for the preserved paths, remaining integration hooks and repeatable comparison checks.
+The add-on remains compiled into the existing app targets; it is not a plugin framework. `Shared` contains host-testable models, persistence and the Watch protocol port. `iPhone` and `Watch` contain their managers, Bluetooth adapters and views. Xcode groups match the on-disk hierarchy.

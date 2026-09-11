@@ -1,7 +1,7 @@
 import Foundation
 
 /// Maps the add-on's display interface to xDrip's existing Watch model.
-/// History merging, validation and trend calculation live in Libre2WatchAddOn / Libre2ReadingPipeline.
+/// History merging, validation and trend calculation live in Libre2WatchManager / Libre2ReadingPipeline.
 extension WatchStateModel: Libre2WatchDisplay {
     /// Restore before the collector can publish a reading or overwrite the complication cache.
     func restoreDirectLibreUnits() {

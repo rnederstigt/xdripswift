@@ -73,7 +73,7 @@ final class WatchStateModel: NSObject, ObservableObject {
 
     /// the Watch Connectivity session
     var session: WCSession
-    lazy var directLibre = Libre2WatchAddOn(display: self)
+    lazy var directLibre = Libre2WatchManager(display: self)
 
     // set timer to automatically refresh the view
     // https://www.hackingwithswift.com/quick-start/swiftui/how-to-use-a-timer-with-swiftui

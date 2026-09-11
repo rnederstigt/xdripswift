@@ -12,19 +12,17 @@ protocol Libre2WatchDisplay: AnyObject {
 
 /// One entry point for Watch messages, source selection and reading conversion.
 /// The handoff controller continues to own the collector and persisted transaction.
-final class Libre2WatchAddOn {
+final class Libre2WatchManager {
     private weak var display: Libre2WatchDisplay?
     private let handoff = Libre2WatchHandoff()
     private let historySync = Libre2WatchHistorySync()
-    private(set) var status = Texts_DirectLibre.phoneRelay
 
     init(display: Libre2WatchDisplay) {
         self.display = display
         handoff.onCollectedReading = { [weak self] sample, sensorMinute, session in
             self?.historySync.collect(sample, sensorMinute: sensorMinute, session: session)
         }
-        handoff.onStatus = { [weak self] status in
-            self?.status = status
+        handoff.onStatus = { [weak self] _ in
             self?.display?.refreshLibreConnectionStatus()
         }
         handoff.onReadings = { [weak self] samples, sensorAge in
@@ -35,13 +33,6 @@ final class Libre2WatchAddOn {
     var isDirect: Bool { handoff.isDirect }
     var isReceiving: Bool { handoff.isReceiving }
     var indicatorText: String { handoff.indicatorText }
-
-    var glucoseSourceStatus: String {
-        let stale = display?.libreReadingHistory.first.map {
-            Date().timeIntervalSince($0.timeStamp) > ConstantsLibre2.recentReadingInterval
-        } ?? true
-        return Texts_DirectLibre.readingStatus(source: (isDirect ? WatchGlucoseSource.directLibre2 : .phoneRelay).title, isStale: stale)
-    }
 
     func restore() { handoff.restore() }
 

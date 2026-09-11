@@ -1,6 +1,7 @@
 import Foundation
 
-/// A phone-local recovery attempt. No Watch acknowledgement is required to open NFC.
+/// Credentials saved after a Direct Libre NFC reset. The legacy name and fields remain
+/// Codable-compatible with prototypes that had a separate Reclaim via NFC workflow.
 struct Libre2ReclaimState: Codable, Equatable {
     let id: UUID
     let sensorUID: Data

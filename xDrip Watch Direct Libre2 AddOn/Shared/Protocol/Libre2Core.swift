@@ -1,7 +1,7 @@
 import Foundation
 
 /// - utilities for Libre 2 data processing, here it's for the case where data is read via bluetooth
-/// - if read via NFC or other transmitter, go to PreLibre2
+/// - if read via NFC or other transmitter, go to Libre2Crypto
 /// -  this is not the handling of bluetooth itself, this is done in class CGMLibre2Transmitter
 enum Libre2Core {
 
@@ -38,15 +38,15 @@ enum Libre2Core {
         ]
 
         // Then we need data of activation command and enable command that were sent to sensor
-        let ad = PreLibre2.usefulFunction(sensorUID: sensorUID, x: 0x1b, y: 0x1b6a)
-        let ed = PreLibre2.usefulFunction(sensorUID: sensorUID, x: 0x1e, y: UInt16(enableTime & 0xFFFF) ^ word(info[5], info[4]))
+        let ad = Libre2Crypto.usefulFunction(sensorUID: sensorUID, x: 0x1b, y: 0x1b6a)
+        let ed = Libre2Crypto.usefulFunction(sensorUID: sensorUID, x: 0x1e, y: UInt16(enableTime & 0xFFFF) ^ word(info[5], info[4]))
 
         let t11 = word(ed[1], ed[0]) ^ word(b[3], b[2])
         let t12 = word(ad[1], ad[0])
         let t13 = word(ed[3], ed[2]) ^ word(b[1], b[0])
         let t14 = word(ad[3], ad[2])
 
-        let t2 = PreLibre2.processCrypto(input: PreLibre2.prepareVariables2(sensorUID: sensorUID, i1: t11, i2: t12, i3: t13, i4: t14))
+        let t2 = Libre2Crypto.processCrypto(input: Libre2Crypto.prepareVariables2(sensorUID: sensorUID, i1: t11, i2: t12, i3: t13, i4: t14))
 
         // TODO extract if secret
         let t31 = crc16(Data([0xc1, 0xc4, 0xc3, 0xc0, 0xd4, 0xe1, 0xe7, 0xba, UInt8(t2[0] & 0xFF), UInt8((t2[0] >> 8) & 0xFF)])).byteSwapped
@@ -56,7 +56,7 @@ enum Libre2Core {
         let t33 = crc16(Data([ad[0], ad[1], ad[2], ad[3], ed[0], ed[1]])).byteSwapped
         let t34 = crc16(Data([ed[2], ed[3], b[0], b[1], b[2], b[3]])).byteSwapped
 
-        let t4 = PreLibre2.processCrypto(input: PreLibre2.prepareVariables2(sensorUID: sensorUID, i1: t31, i2: t32, i3: t33, i4: t34))
+        let t4 = Libre2Crypto.processCrypto(input: Libre2Crypto.prepareVariables2(sensorUID: sensorUID, i1: t31, i2: t32, i3: t33, i4: t34))
 
         let res = [
             UInt8(t4[0] & 0xFF),
@@ -79,12 +79,12 @@ enum Libre2Core {
     /// - Returns: Decrypted BLE data
     public static func decryptBLE(sensorUID: Data, data: Data) throws -> [UInt8] {
         guard sensorUID.count == 8, data.count == ConstantsLibre2.encryptedFrameSize else { throw Libre2HandoffError.invalidSession }
-        let d = PreLibre2.usefulFunction(sensorUID: sensorUID, x: 0x1b, y: 0x1b6a)
+        let d = Libre2Crypto.usefulFunction(sensorUID: sensorUID, x: 0x1b, y: 0x1b6a)
         let x = word(d[1], d[0]) ^ word(d[3], d[2]) | 0x63
         let y = word(data[1], data[0]) ^ 0x63
 
         var key = [UInt8]()
-        var initialKey = PreLibre2.processCrypto(input: PreLibre2.prepareVariables(sensorUID: sensorUID, x: x, y: y))
+        var initialKey = Libre2Crypto.processCrypto(input: Libre2Crypto.prepareVariables(sensorUID: sensorUID, x: x, y: y))
 
         for _ in 0 ..< 8 {
             key.append(UInt8(truncatingIfNeeded: initialKey[0]))
@@ -95,7 +95,7 @@ enum Libre2Core {
             key.append(UInt8(truncatingIfNeeded: initialKey[2] >> 8))
             key.append(UInt8(truncatingIfNeeded: initialKey[3]))
             key.append(UInt8(truncatingIfNeeded: initialKey[3] >> 8))
-            initialKey = PreLibre2.processCrypto(input: initialKey)
+            initialKey = Libre2Crypto.processCrypto(input: initialKey)
         }
 
         let result = data[2...].enumerated().map { i, value in

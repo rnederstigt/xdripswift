@@ -11,10 +11,6 @@ class Texts_DirectLibre {
         "phoneRelay", tableName: filename, bundle: .main, value: "iPhone Relay",
         comment: "Direct Libre experiment")
 
-    static let directLibre = NSLocalizedString(
-        "directLibre", tableName: filename, bundle: .main, value: "Direct Libre",
-        comment: "Direct Libre experiment")
-
     static let prepared = NSLocalizedString(
         "prepared", tableName: filename, bundle: .main, value: "Prepared",
         comment: "Direct Libre experiment")
@@ -49,12 +45,6 @@ class Texts_DirectLibre {
 
     // MARK: - Handoff controls
 
-    static let retryHandoff = NSLocalizedString(
-        "retryHandoff", tableName: filename, bundle: .main, value: "Retry handoff / recovery status",
-        comment: "Direct Libre experiment")
-
-    // MARK: - Session validation
-
     static let invalidSession = NSLocalizedString(
         "invalidSession", tableName: filename, bundle: .main,
         value: "Invalid Libre session or missing sensor conversion parameters.",
@@ -85,11 +75,6 @@ class Texts_DirectLibre {
         comment: "Direct Libre experiment")
 
     // MARK: - Handoff recovery
-
-    static let openBothAppsToReturn = NSLocalizedString(
-        "openBothAppsToReturn", tableName: filename, bundle: .main,
-        value: "Keep both apps open and choose Return to iPhone on the phone.",
-        comment: "Direct Libre experiment")
 
     static let waitingForPhoneTransport = NSLocalizedString(
         "waitingForPhoneTransport", tableName: filename, bundle: .main,
@@ -229,21 +214,6 @@ class Texts_DirectLibre {
         return String(format: format, reason)
     }
 
-    static func readingStatus(source: String, isStale: Bool) -> String {
-        let format: String
-        if isStale {
-            format = NSLocalizedString(
-                "staleReadingFormat", tableName: filename, bundle: .main, value: "%@ — Stale / no reading",
-                comment: "Reading source with stale status")
-        } else {
-            format = NSLocalizedString(
-                "recentReadingFormat", tableName: filename, bundle: .main, value: "%@ — Recent",
-                comment: "Reading source with recent status")
-        }
-        return String(format: format, source)
-    }
-    // MARK: - Experimental checklist and diagnostics
-
     static let experimentTitle = NSLocalizedString(
         "experimentTitle", tableName: filename, bundle: .main, value: "Direct Libre (Experimental)",
         comment: "Direct Libre experiment")
@@ -256,37 +226,15 @@ class Texts_DirectLibre {
         "watchReachable", tableName: filename, bundle: .main, value: "Watch app reachable",
         comment: "Direct Libre experiment")
 
-    static let reachableNow = NSLocalizedString(
-        "reachableNow", tableName: filename, bundle: .main, value: "Reachable now",
-        comment: "Direct Libre experiment")
-
-    static let notReachable = NSLocalizedString(
-        "notReachable", tableName: filename, bundle: .main, value: "Not reachable",
-        comment: "Direct Libre experiment")
-
     static let reachabilityHelp = NSLocalizedString(
         "reachabilityHelp", tableName: filename, bundle: .main,
         value:
             "For handoff or return, keep both xDrip apps open and nearby. Direct Watch collection can continue while the iPhone is unreachable.",
         comment: "Direct Libre experiment")
 
-    static let communicationReady = NSLocalizedString(
-        "communicationReady", tableName: filename, bundle: .main,
-        value: "Watch communication activated", comment: "Direct Libre experiment"
-    )
-
-    static let watchInstalled = NSLocalizedString(
-        "watchInstalled", tableName: filename, bundle: .main, value: "Companion Watch app installed",
-        comment: "Direct Libre experiment")
-
     static let watchInstalledHelp = NSLocalizedString(
         "watchInstalledHelp", tableName: filename, bundle: .main,
         value: "Install this build of xDrip on your paired Watch.",
-        comment: "Direct Libre experiment")
-
-    static let communicationHelp = NSLocalizedString(
-        "communicationHelp", tableName: filename, bundle: .main,
-        value: "Open the companion app to activate communication.",
         comment: "Direct Libre experiment")
 
     static let masterMode = NSLocalizedString(
@@ -320,11 +268,6 @@ class Texts_DirectLibre {
         "freshReading", tableName: filename, bundle: .main, value: "Recent Libre reading",
         comment: "Direct Libre experiment")
 
-    static let freshHelp = NSLocalizedString(
-        "freshHelp", tableName: filename, bundle: .main,
-        value: "A valid reading less than three minutes old is required after sensor warmup.",
-        comment: "Direct Libre experiment")
-
     static let phoneConnected = NSLocalizedString(
         "phoneConnected", tableName: filename, bundle: .main, value: "iPhone connected to Libre",
         comment: "Direct Libre experiment")
@@ -334,27 +277,12 @@ class Texts_DirectLibre {
         value: "Start with a working Libre BLE connection on the iPhone.",
         comment: "Direct Libre experiment")
 
-    static let phoneOwnership = NSLocalizedString(
-        "phoneOwnership", tableName: filename, bundle: .main, value: "iPhone owns the sensor",
-        comment: "Direct Libre experiment")
-
-    static let phoneOwnershipHelp = NSLocalizedString(
-        "phoneOwnershipHelp", tableName: filename, bundle: .main,
-        value: "Complete any previous handoff before starting another one.",
-        comment: "Direct Libre experiment")
-
     static let connectToWatch = NSLocalizedString(
         "connectToWatch", tableName: filename, bundle: .main, value: "Switch to Watch",
         comment: "Direct Libre experiment")
 
     static let cancelReturn = NSLocalizedString(
         "cancelReturn", tableName: filename, bundle: .main, value: "Switch to iPhone",
-        comment: "Direct Libre experiment")
-
-    static let cancelHelp = NSLocalizedString(
-        "cancelHelp", tableName: filename, bundle: .main,
-        value:
-            "Cancel uses the normal return transaction. Keep both apps open; the iPhone stays suspended until return is confirmed.",
         comment: "Direct Libre experiment")
 
     static let returnRequested = NSLocalizedString(
@@ -368,10 +296,6 @@ class Texts_DirectLibre {
 
     static let emptyLog = NSLocalizedString(
         "emptyLog", tableName: filename, bundle: .main, value: "No activity yet.",
-        comment: "Direct Libre experiment")
-
-    static let clearLog = NSLocalizedString(
-        "clearLog", tableName: filename, bundle: .main, value: "Clear log",
         comment: "Direct Libre experiment")
 
     static let requestSent = NSLocalizedString(
@@ -421,82 +345,9 @@ class Texts_DirectLibre {
         "checkMissing", tableName: filename, bundle: .main, value: "Needs attention",
         comment: "Direct Libre experiment")
 
-    static let checkWaiting = NSLocalizedString(
-        "checkWaiting", tableName: filename, bundle: .main, value: "Waiting",
-        comment: "Direct Libre experiment")
-
-    static let resetDone = NSLocalizedString(
-        "resetDone", tableName: filename, bundle: .main, value: "Diagnostics reset",
-        comment: "Direct Libre experiment")
-
-    static let reclaimTitle = NSLocalizedString(
-        "reclaimTitle", tableName: filename, bundle: .main, value: "Reclaim via NFC",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let reclaimScanning = NSLocalizedString(
-        "reclaimScanning", tableName: filename, bundle: .main,
-        value: "Reclaiming: scan the same Libre sensor with your iPhone.",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let reclaimVerifying = NSLocalizedString(
-        "reclaimVerifying", tableName: filename, bundle: .main,
-        value: "NFC completed. Waiting for a new phone BLE login and fresh glucose. Keep Bluetooth on.",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let reclaimVerified = NSLocalizedString(
-        "reclaimVerified", tableName: filename, bundle: .main,
-        value: "Phone reclaim verified: fresh Libre BLE reading received.",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let reclaimNotVerified = NSLocalizedString(
-        "reclaimNotVerified", tableName: filename, bundle: .main,
-        value:
-            "Reclaim not verified: no fresh phone BLE reading. Enable Bluetooth, keep the phone near the sensor, then retry or use the ordinary Libre Add/Connect NFC scan.",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let reclaimFailed = NSLocalizedString(
-        "reclaimFailed", tableName: filename, bundle: .main,
-        value:
-            "NFC reclaim did not complete. Phone recovery remains available; retry scanning the same sensor.",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let usePhoneRecovery = NSLocalizedString(
-        "usePhoneRecovery", tableName: filename, bundle: .main,
-        value:
-            "Direct Libre is active or unresolved. Return from Advanced Settings → Direct Libre, or use the ordinary Libre Add/Connect NFC scan to reset the connection.",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let wrongReclaimSensor = NSLocalizedString(
-        "wrongReclaimSensor", tableName: filename, bundle: .main,
-        value: "This is a different sensor. Scan the Libre associated with this connection.",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let revokeSent = NSLocalizedString(
-        "revokeSent", tableName: filename, bundle: .main,
-        value: "Asked Watch to stop the previous direct session",
-        comment: "Phone-controlled Libre proof of concept")
-
     static let directWaiting = NSLocalizedString(
         "directWaiting", tableName: filename, bundle: .main, value: "Direct Libre · waiting / stale",
         comment: "Phone-controlled Libre proof of concept")
-
-    static let reclaimHelp = NSLocalizedString(
-        "reclaimHelp", tableName: filename, bundle: .main,
-        value:
-            "Use when normal return cannot complete, including when Watch is unreachable. This scans and reprovisions the same sensor with a new unlock code. Success requires a fresh phone BLE reading.",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let confirmReclaim = NSLocalizedString(
-        "confirmReclaim", tableName: filename, bundle: .main,
-        value:
-            "Reprovision this sensor with a new unlock code to regain the connection on iPhone? This can disrupt other apps’ sensor connections and alarms. Success still requires fresh phone BLE glucose.",
-        comment: "Phone-controlled Libre proof of concept")
-
-    static let cancelAction = NSLocalizedString(
-        "cancelAction", tableName: filename, bundle: .main, value: "Cancel",
-        comment: "Phone-controlled Libre proof of concept")
-
-    // MARK: - Phone reading and login diagnostics
 
     static let phoneLoginVerified = NSLocalizedString(
         "phoneLoginVerified", tableName: filename, bundle: .main,
@@ -562,9 +413,6 @@ class Texts_DirectLibre {
     static let retryReturnToPhone = NSLocalizedString(
         "retryReturnToPhone", tableName: filename, bundle: .main,
         value: "Retry return to iPhone", comment: "Direct Libre switch button")
-    static let retryPhoneConnection = NSLocalizedString(
-        "retryPhoneConnection", tableName: filename, bundle: .main,
-        value: "Retry iPhone connection", comment: "Direct Libre switch button after NFC recovery")
     static let ordinaryScanRecovery = NSLocalizedString(
         "ordinaryScanRecovery", tableName: filename, bundle: .main,
         value: "If return cannot finish, use the ordinary Libre Add/Connect NFC scan to reset Direct Libre and connect the sensor on iPhone. The Watch does not need to be reachable.",
