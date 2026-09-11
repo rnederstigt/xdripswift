@@ -34,7 +34,7 @@ Paths are relative to the repository root. This is the complete integration/buil
 | `xDrip Watch App/DataModels/WatchStateModel.swift` | Owns one Watch add-on controller, forwards restore/messages/reachability, and guards relayed status during direct collection. Makes the existing complication update method available to the adapter. Routes history acknowledgements separately and forwards WCSession activation for outbox retry. Queued handoff delivery accepts only session-bound revocation. |
 | `xDrip Watch App/Views/BigNumberView/BigNumberView.swift` | Uses the add-on reading-age marker in the original dot position. |
 | `xDrip Watch App/Views/MainView/SubViews/MainViewInfoView.swift` | Uses the same reading-age marker for chart/AGP pages. |
-| `xDrip-Watch-App-Info.plist` | Bluetooth usage explanation and background-mode declaration from the prototype; does not grant unlimited runtime. |
+| `xDrip-Watch-App-Info.plist` | Bluetooth usage explanation and background mode, plus the minimal `underwater-depth` foreground declaration; does not grant unlimited runtime. |
 | `xdrip.xcodeproj/project.pbxproj` | A folder hierarchy for the add-on and explicit platform source memberships. Also retains the build-path cleanup from the prototype. |
 | `xdrip.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings` | Uses Xcode's default build/DerivedData location. |
 | `xdrip.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings` | The same default build-location setting for the workspace. |
@@ -43,6 +43,8 @@ Paths are relative to the repository root. This is the complete integration/buil
 | `xdrip-Bridging-Header-swift_2K9IH5TUSZLKY-clang_1I9XNFA44R9PL.pch` | Previously tracked machine-specific build artifact removed by the original cleanup commit. |
 
 The generic connection guards are essential. A separate collector cannot stop the original transmitter from reconnecting unless its connection paths consult the policy. The disconnect completion must also remain tied to the actual Core Bluetooth callback, not a timer or an immediate acknowledgement.
+
+The minimal underwater experiment adds only the Watch Info.plist declaration. It adds no Swift integration point, Motion usage description or depth entitlement. The existing nine Swift integration points remain. See [UNDERWATER.md](UNDERWATER.md); the declaration changes frontmost preparation behaviour app-wide, independently of ownership.
 
 ## Checks and upgrades
 
@@ -55,7 +57,7 @@ swift test --package-path "xDrip Watch Direct Libre2 AddOn" --scratch-path ../wo
 
 The integration check verifies source paths, duplicate membership, platform separation and exclusion of host tests from app targets. The Swift package tests the Foundation-only components. App source checks/builds are still necessary because the host package does not compile the platform adapters.
 
-When updating to a new upstream version, review the nine existing Swift integration points first, then run the integration check, host tests and both Xcode targets. Recheck the device acceptance sequence in README.md, especially ordinary NFC scanning, return after an interrupted switch and explicit NFC reclaim.
+When updating to a new upstream version, review the nine existing Swift integration points first, then run the integration check, host tests and both Xcode targets. Recheck the device acceptance sequence in README.md, especially ordinary NFC scanning, return after an interrupted switch and the minimal underwater foreground behaviour.
 
 ## Behavior deliberately preserved
 

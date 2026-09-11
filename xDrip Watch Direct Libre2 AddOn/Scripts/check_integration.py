@@ -2,6 +2,7 @@
 """Check the add-on's Xcode source membership without compiling or changing files."""
 from pathlib import Path
 import json
+import plistlib
 import subprocess
 
 repo = Path(__file__).resolve().parents[2]
@@ -46,3 +47,14 @@ assert shared <= source_sets["xDrip Watch App"], "Watch is missing shared helper
 assert shared <= source_sets["xdrip"] | source_sets["xDrip Watch App"]
 assert not set((addon / "Tests").rglob("*.swift")) & set.union(*source_sets.values()), "Host tests must not ship in the app"
 print("Add-on membership and platform separation verified.")
+
+with (repo / "xDrip-Watch-App-Info.plist").open("rb") as file:
+    watch_info = plistlib.load(file)
+assert "underwater-depth" in watch_info.get("WKBackgroundModes", [])
+assert "bluetooth-central" in watch_info.get("UIBackgroundModes", [])
+assert "NSMotionUsageDescription" not in watch_info
+with (repo / "xDrip Watch App/xDrip Watch App.entitlements").open("rb") as file:
+    watch_entitlements = plistlib.load(file)
+assert "com.apple.developer.submerged-shallow-depth-and-pressure" not in watch_entitlements
+assert "com.apple.developer.submerged-depth-and-pressure" not in watch_entitlements
+print("Minimal Watch foreground configuration verified; no Motion usage or depth entitlement.")

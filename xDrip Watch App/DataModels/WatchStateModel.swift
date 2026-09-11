@@ -138,6 +138,7 @@ final class WatchStateModel: NSObject, ObservableObject {
         self.session = session
         super.init()
 
+        restoreDirectLibreUnits()
         directLibre.restore()
         session.delegate = self
         session.activate()
@@ -678,8 +679,9 @@ final class WatchStateModel: NSObject, ObservableObject {
     }
 
     private func processStatusFromDictionary(dictionary: [String: Any]) -> Bool {
+        let unitsChanged = receiveDirectLibreUnits(dictionary)
         guard !directLibre.isDirect else {
-            return false
+            return unitsChanged
         }
         // transferUserInfo queues every payload while the Watch app is inactive. Ignore old status
         // updates so reopening the app does not replay days of state changes one by one.
@@ -688,7 +690,6 @@ final class WatchStateModel: NSObject, ObservableObject {
             return false
         }
 
-        isMgDl = dictionary["isMgDl"] as? Bool ?? true
         urgentLowLimitInMgDl = dictionary["urgentLowLimitInMgDl"] as? Double ?? 60
         lowLimitInMgDl = dictionary["lowLimitInMgDl"] as? Double ?? 70
         highLimitInMgDl = dictionary["highLimitInMgDl"] as? Double ?? 180

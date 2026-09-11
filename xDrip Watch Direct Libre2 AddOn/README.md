@@ -20,6 +20,14 @@ If **Recent Libre reading** is checked but **Phone login and reading verified** 
 
 There are no experiment controls in the Settings header/version area or on a separate Watch page. The ordinary sensor scan entry is also a hard-reset path, including after sensor deletion or an unresolved Direct Watch session. It accepts the sensor being scanned without requiring the old sensor or a reachable Watch. See [NFC_RESET.md](NFC_RESET.md) for recovery behavior and device checks.
 
+## Watch units and restarts
+
+The Watch retains the phone's last explicit glucose-unit preference across app restarts, including when the phone is unreachable. Open both apps together once after installing to confirm the correct units. See [WATCH_RESTARTS.md](WATCH_RESTARTS.md) for the persistence check and collecting crash/termination reports.
+
+## Underwater foreground experiment
+
+The Watch declares `underwater-depth` to use Apple’s documented 30-minute frontmost preparation period after launch. Water Lock is manual. There is no submersion controller, Motion permission request or custom runtime session. This app-wide configuration is independent of sensor ownership. See [UNDERWATER.md](UNDERWATER.md) for the workflow and device checks; indefinite foreground display and underwater BLE reception are not guaranteed.
+
 ## Phone history synchronisation
 
 New Direct Watch measurements are persisted on Watch and uploaded automatically to the phone
@@ -44,7 +52,7 @@ step-by-step device test. This does not add continuous monitoring, Watch alarms 
 | Existing recovery records | Saved recovery credentials and confirmed recovery retries from older builds remain supported. New recovery starts through ordinary Add/Connect NFC scanning. |
 | Display and diagnostics | Original phone-relay handler plus direct-only validation/display updates, one complication refresh per accepted update, direct/stale indicator, phone checklist/reachability/log. |
 | Phone history sync | Durable Watch outbox, batches of up to 120 measurements, original-sensor matching, repeat-safe imports and acknowledgements after persistent-store save. |
-| Project integration | Target memberships, Watch Bluetooth usage/background declaration, default DerivedData settings, no signing/entitlement changes. |
+| Project integration | Target memberships, Watch Bluetooth/underwater declarations and default DerivedData settings. Personal signing settings stay local. |
 
 The intended recovery property is **phone-controlled provisioning**, not guaranteed instantaneous remote disconnection. An unreachable Watch cannot be commanded to stop through WatchConnectivity. Whether the sensor immediately displaces an already authenticated Watch connection and refuses its previous code after reprovisioning must be established on physical hardware.
 
@@ -75,13 +83,13 @@ See [INTEGRATION.md](INTEGRATION.md) for the complete list of changes outside th
 
 ## Validation and remaining work
 
-- **71 focused host tests passed**, zero failures: session serialization, counter progression/persistence-before-write, exhaustion, protocol fixture/parsing, exclusive ownership, cancellation, delayed IDs, interrupted returns, bounded logs, normal-NFC isolation and reclaim recovery. Seven additional regressions cover ordinary NFC hard reset after deletion, retries/restart, stale completions and queued revocation. Two isolation regressions cover dormant logging and retained experimental credentials after returning to phone. Checklist regressions cover received-but-unverified BLE data, freshness bounds, reconnect reset and older observations. Switch-button regressions cover pending returns and confirmed NFC recovery. Four reading-pipeline regressions cover overlap replacement, malformed/out-of-order data, timestamp bounds and trend calculation after extraction into the add-on. Seven refresh regressions cover freshness deadlines, replacement/reset, clock rollback, ownership notification ordering and failed persistence, NFC activity and log change notifications.
+- **75 focused host tests passed**, zero failures, including four Watch-unit persistence tests. Existing coverage includes session serialization, counter progression/persistence-before-write, exhaustion, protocol fixture/parsing, exclusive ownership, cancellation, delayed IDs, interrupted returns, bounded logs, normal-NFC isolation and reclaim recovery. Seven additional regressions cover ordinary NFC hard reset after deletion, retries/restart, stale completions and queued revocation. Two isolation regressions cover dormant logging and retained experimental credentials after returning to phone. Checklist regressions cover received-but-unverified BLE data, freshness bounds, reconnect reset and older observations. Switch-button regressions cover pending returns and confirmed NFC recovery. Four reading-pipeline regressions cover overlap replacement, malformed/out-of-order data, timestamp bounds and trend calculation after extraction into the add-on. Seven refresh regressions cover freshness deadlines, replacement/reset, clock rollback, ownership notification ordering and failed persistence, NFC activity and log change notifications.
 - **Native SDK Swift checks:** changed/add-on iPhone sources are checked against complete target declarations, and all Watch Swift inputs (including generated asset symbols). These validate Swift compilation/types, not asset processing, linking, signing or installation. The Xcode membership check also passes for both targets.
 - **Full iPhone and Watch Xcode builds:** both stopped at asset compilation because this environment could not access simulator runtimes (`No available simulator runtimes`). Signing was disabled for these validation attempts only. A full build, signing and installation have not been verified here.
 - **History tests:** 12 host regressions cover queue persistence/failure, immutable batches, acknowledgements, repeated sensor minutes, offline batches and sensor identity. Five hosted iPhone Core Data tests additionally cover disk-save acknowledgement/failure, duplicate imports, ended sensors and overlap; they require an available simulator/device to execute.
 - **No sensor/phone/Watch hardware tests were performed.** NFC regression checks, direct readings, reconnection and active-Watch displacement remain required.
-- This is a foreground proof of concept. There is no HKWorkoutSession mode, continuous-background guarantee, sensor backfill, new Watch alarm system or production reliability claim. The existing Watch complication update path is called, but its device behavior still needs testing.
-- `bluetooth-central` is declared for Watch, but it does not grant unlimited execution. Apple documents Bluetooth work within permitted background tasks; this iteration adds no runtime-extension or restricted Bluetooth entitlement. [Apple: Using background tasks](https://developer.apple.com/documentation/watchkit/using-background-tasks).
+- This is a foreground proof of concept with an experimental underwater foreground declaration. There is no HKWorkoutSession mode, continuous-background guarantee, sensor backfill, new Watch alarm system or production reliability claim. The existing Watch complication update path is called, but its device behavior still needs testing.
+- `bluetooth-central` is declared for Watch, but it does not grant unlimited execution. Apple documents Bluetooth work within permitted background tasks; the underwater declaration provides a documented preparation period, while this prototype does not manage extended runtime sessions, and no restricted Bluetooth entitlement is used. [Apple: Using background tasks](https://developer.apple.com/documentation/watchkit/using-background-tasks).
 
 ### Device acceptance sequence
 

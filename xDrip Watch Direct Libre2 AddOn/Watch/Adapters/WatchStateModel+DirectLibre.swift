@@ -3,6 +3,24 @@ import Foundation
 /// Maps the add-on's display interface to xDrip's existing Watch model.
 /// History merging, validation and trend calculation live in Libre2WatchAddOn / Libre2ReadingPipeline.
 extension WatchStateModel: Libre2WatchDisplay {
+    /// Restore before the collector can publish a reading or overwrite the complication cache.
+    func restoreDirectLibreUnits() {
+        let defaults = UserDefaults(suiteName: Bundle.main.appGroupSuiteName)
+        let data = defaults?.data(forKey: "complicationSharedUserDefaults.\(Bundle.main.mainAppBundleIdentifier)")
+        let cached = data.flatMap { try? JSONDecoder().decode(ComplicationSharedUserDefaultsModel.self, from: $0) }
+        isMgDl = Libre2WatchPreferences().restoreUnits(cachedUnit: cached?.isMgDl)
+    }
+
+    /// Units may follow the phone during direct collection; sensor status and readings may not.
+    func receiveDirectLibreUnits(_ dictionary: [String: Any]) -> Bool {
+        guard let units = Libre2WatchPreferences().receiveUnits(dictionary), units != isMgDl else { return false }
+        if directLibre.isDirect {
+            deltaValueInUserUnit = units ? deltaValueInUserUnit * 18.0182 : deltaValueInUserUnit / 18.0182
+        }
+        isMgDl = units
+        return true
+    }
+
     var libreReadingHistory: [Libre2Sample] {
         zip(bgReadingDates, bgReadingValues).map { date, value in
             Libre2Sample(timeStamp: date, glucoseLevelRaw: value)
