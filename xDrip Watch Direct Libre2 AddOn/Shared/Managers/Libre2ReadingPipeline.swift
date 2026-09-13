@@ -33,26 +33,41 @@ enum Libre2ReadingPipeline {
         return (samples + olderHistory).sorted { $0.timeStamp > $1.timeStamp }
     }
 
-    static func trend(from samples: [Libre2Sample]) -> (delta: Double, slopeOrdinal: Int) {
-        let delta = samples.count > 1 ? samples[0].glucoseLevelRaw - samples[1].glucoseLevelRaw : 0
-        let minutes = samples.count > 1 ? max(samples[0].timeStamp.timeIntervalSince(samples[1].timeStamp) / 60, 1) : 1
-        let rate = delta / minutes
+    /// Match Calibrator.findSlope, BgReading.slopeOrdinal and WatchManager.currentBgReadings.
+    static func trend(from samples: [Libre2Sample], isMgDl: Bool = true) -> (delta: Double, slopeOrdinal: Int) {
+        guard samples.count > 1 else { return (0, 0) }
+        let latest = samples[0]
+        let previous = samples[1]
+        var actualValueInUserUnit = latest.glucoseLevelRaw
+        var previousValueInUserUnit = previous.glucoseLevelRaw
+        if !isMgDl {
+            actualValueInUserUnit = (actualValueInUserUnit * ConstantsLibre2.mgDlToMmoll * 10).rounded() / 10
+            previousValueInUserUnit = (previousValueInUserUnit * ConstantsLibre2.mgDlToMmoll * 10).rounded() / 10
+        }
+        let delta = actualValueInUserUnit - previousValueInUserUnit
+
+        // The phone hides the arrow for equal timestamps or a gap over 21 minutes.
+        let milliseconds = latest.timeStamp.timeIntervalSince1970 * 1000 - previous.timeStamp.timeIntervalSince1970 * 1000
+        guard milliseconds != 0, milliseconds <= Double(ConstantsLibre2.maxSlopeInMinutes * 60 * 1000) else {
+            return (delta, 0)
+        }
+        let rate = (latest.glucoseLevelRaw - previous.glucoseLevelRaw) / milliseconds * 60000
         let slope: Int
 
-        if rate > 3 {
-            slope = 1
-        } else if rate > 2 {
-            slope = 2
-        } else if rate > 1 {
-            slope = 3
-        } else if rate < -3 {
+        if rate <= -3.5 {
             slope = 7
-        } else if rate < -2 {
+        } else if rate <= -2 {
             slope = 6
-        } else if rate < -1 {
+        } else if rate <= -1 {
             slope = 5
-        } else {
+        } else if rate <= 1 {
             slope = 4
+        } else if rate <= 2 {
+            slope = 3
+        } else if rate <= 3.5 {
+            slope = 2
+        } else {
+            slope = 1
         }
         return (delta, slope)
     }

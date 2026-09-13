@@ -34,6 +34,7 @@ final class CBPeripheral {
     weak var delegate: CBPeripheralDelegate?
     var services: [CBService]?
     var writes: [Data] = []
+    var notificationRequests = 0
     var onWrite: () -> Void = {}
     func discoverServices(_ services: [CBUUID]) {}
     func discoverCharacteristics(_ characteristics: [CBUUID], for service: CBService) {}
@@ -41,7 +42,7 @@ final class CBPeripheral {
         onWrite()
         writes.append(value)
     }
-    func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic) {}
+    func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic) { notificationRequests += 1 }
 }
 final class CBCentralManager {
     static var latest: CBCentralManager!
@@ -134,6 +135,7 @@ private final class Fixture {
             self.disk = record
         }
         peripheral.onWrite = { [unowned self] in
+            precondition(self.receive.isNotifying, "F002 subscription must be confirmed before F001")
             precondition(self.disk.session!.unlockCount == UInt16(18 + self.peripheral.writes.count),
                 "Counter must reach persistent storage before every F001 write")
         }
@@ -151,17 +153,16 @@ private final class Fixture {
     func subscribe() {
         collector.peripheral(peripheral, didDiscoverServices: nil)
         collector.peripheral(peripheral, didDiscoverCharacteristicsFor: service, error: nil)
-        collector.peripheral(peripheral, didWriteValueFor: write, error: nil)
         receive.isNotifying = true
         collector.peripheral(peripheral, didUpdateNotificationStateFor: receive, error: nil)
+        collector.peripheral(peripheral, didWriteValueFor: write, error: nil)
     }
     func disconnect() {
         peripheral.state = .disconnected
         collector.centralManager(central, didDisconnectPeripheral: peripheral, error: nil)
     }
-    func deliverReading() {
+    func deliverReading(_ frame: Data = data("ebb86eb952942ce055278df46b68ba1eacd3c78c7e800ea3890c61116679c2a3fcc220a95571ff760207682942f0")) {
         // Existing upstream encrypted fixture; actual assembly, crypto and native parsing run here.
-        let frame = data("ebb86eb952942ce055278df46b68ba1eacd3c78c7e800ea3890c61116679c2a3fcc220a95571ff760207682942f0")
         for range in [0..<20, 20..<40, 40..<46] {
             receive.value = frame.subdata(in: range)
             collector.peripheral(peripheral, didUpdateValueFor: receive, error: nil)
@@ -174,6 +175,67 @@ private final class Fixture {
 private enum ReconnectTests {
     static func main() throws {
         let cases: [(String, () throws -> Void)] = [
+            ("Notification confirmation precedes counter persistence and a single unlock write", {
+                let f = Fixture()
+                f.collector.start(); f.discover(); f.connect()
+                f.collector.peripheral(f.peripheral, didDiscoverCharacteristicsFor: f.service, error: nil)
+                precondition(f.peripheral.notificationRequests == 1 && f.peripheral.writes.isEmpty)
+                precondition(f.disk.session!.unlockCount == 17)
+                f.deliverReading()
+                precondition(f.readings == 0)
+                f.receive.isNotifying = true
+                f.collector.peripheral(f.peripheral, didUpdateNotificationStateFor: f.receive, error: nil)
+                precondition(f.disk.session!.unlockCount == 18 && f.peripheral.writes.count == 1)
+                // A reading can arrive before the write acknowledgement; notifications are already ready.
+                f.deliverReading()
+                precondition(f.readings == 1)
+                f.collector.peripheral(f.peripheral, didWriteValueFor: f.write, error: nil)
+                f.collector.peripheral(f.peripheral, didUpdateNotificationStateFor: f.receive, error: nil)
+                precondition(f.peripheral.notificationRequests == 1 && f.peripheral.writes.count == 1)
+            }),
+            ("Failed or inactive subscription never consumes an unlock counter", {
+                for error in [nil, Libre2HandoffError.invalidSession] {
+                    let f = Fixture()
+                    f.collector.start(); f.discover(); f.connect()
+                    f.collector.peripheral(f.peripheral, didDiscoverCharacteristicsFor: f.service, error: nil)
+                    f.receive.isNotifying = error != nil
+                    f.collector.peripheral(f.peripheral, didUpdateNotificationStateFor: f.receive, error: error)
+                    precondition(f.peripheral.writes.isEmpty && f.disk.session!.unlockCount == 17)
+                    precondition(f.central.cancellations == 1)
+                }
+            }),
+            ("Return during subscription prevents a late notification callback from unlocking", {
+                let f = Fixture()
+                f.collector.start(); f.discover(); f.connect()
+                f.collector.peripheral(f.peripheral, didDiscoverCharacteristicsFor: f.service, error: nil)
+                try f.store.beginReturnToPhone(id: f.disk.session!.id)
+                f.collector.stop {}
+                f.receive.isNotifying = true
+                f.collector.peripheral(f.peripheral, didUpdateNotificationStateFor: f.receive, error: nil)
+                precondition(f.peripheral.writes.isEmpty && f.disk.session!.unlockCount == 17)
+            }),
+            ("Failed unlock acknowledgement keeps the attempted counter for reconnection", {
+                let f = Fixture()
+                f.collector.start(); f.discover(); f.connect(); f.subscribe()
+                f.collector.peripheral(f.peripheral, didWriteValueFor: f.write, error: Libre2HandoffError.invalidSession)
+                precondition(f.central.cancellations == 1 && f.disk.session!.unlockCount == 18)
+                f.disconnect(); DispatchQueue.main.advance(5)
+                f.connect(); f.subscribe()
+                precondition(f.disk.session!.unlockCount == 19 && f.peripheral.writes.count == 2)
+            }),
+            ("Invalid decoded glucose is discarded and the next valid frame uses the same connection", {
+                let f = Fixture()
+                f.collector.start(); f.discover(); f.connect(); f.subscribe()
+                // Upstream fixture with its first 14 glucose bits zeroed and CRC recomputed.
+                let invalid = data("ebb8e6bb52942ce055278df46b68ba1eacd3c78c7e800ea3890c61116679c2a3fcc220a95571ff76020768298167")
+                let decoded = Data(try Libre2Core.decryptBLE(sensorUID: f.disk.session!.sensorUID, data: invalid))
+                precondition(Libre2Core.readBits(decoded, 0, 0, 14) == 0)
+                f.deliverReading(invalid)
+                DispatchQueue.main.advance(300)
+                precondition(f.readings == 0 && f.central.cancellations == 0 && f.collector.isConnected)
+                f.deliverReading()
+                precondition(f.readings == 1 && f.disk.session!.unlockCount == 18 && f.peripheral.writes.count == 1)
+            }),
             ("Scan stays active; repeated taps do not restart it", {
                 let f = Fixture()
                 f.collector.start()

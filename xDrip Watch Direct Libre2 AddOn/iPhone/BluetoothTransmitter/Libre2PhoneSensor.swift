@@ -8,5 +8,4 @@ protocol Libre2PhoneSensor: AnyObject {
     func prepareDirectWatch(completion: @escaping (Result<Libre2WatchSession, Error>) -> Void)
     func connect()
     func disconnect(completion: @escaping () -> Void)
-    func startBLEScanning()
 }

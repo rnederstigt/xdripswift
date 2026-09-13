@@ -21,7 +21,6 @@ final class Libre2PhoneHandoff: ObservableObject {
     var readingStatus = Libre2PhoneReadingStatus() {
         didSet { refreshChecklist() }
     }
-    @Published private(set) var isVerifyingPhoneConnection = false
     @Published var status = "" {
         didSet { Libre2ActivityLog.shared.record(status) }
     }
@@ -40,29 +39,8 @@ final class Libre2PhoneHandoff: ObservableObject {
         WCSession.default.activationState == .activated && WCSession.default.isReachable
     }
 
-    var canVerifyPhoneConnection: Bool {
-        owner == .phone && !isStarting && !isVerifyingPhoneConnection
-            && !store.phoneNFCIsActive && sensor?.isConnected == true
-            && !UserDefaults.standard.suppressUnLockPayLoad
-    }
-
-    /// Re-establish an observable phone login after Core Bluetooth restores an existing stream.
-    /// This uses the current credentials and the BLE-only scanner, never NFC provisioning.
-    func verifyPhoneConnection() {
-        guard canVerifyPhoneConnection, let sensor else { return }
-        isVerifyingPhoneConnection = true
-        readingStatus = Libre2PhoneReadingStatus()
-        status = Texts_DirectLibre.verifyingPhoneConnection
-        sensor.disconnect { [weak self, weak sensor] in
-            guard let self else { return }
-            self.isVerifyingPhoneConnection = false
-            guard self.owner == .phone, let sensor, self.sensor === sensor else { return }
-            sensor.startBLEScanning()
-        }
-    }
-
     var canStart: Bool {
-        owner == .phone && !isStarting && !isVerifyingPhoneConnection && !store.phoneNFCIsActive
+        owner == .phone && !isStarting && !store.phoneNFCIsActive
             && checklistGroups.flatMap(\.items).allSatisfy { $0.isSatisfied }
     }
 
@@ -153,7 +131,6 @@ final class Libre2PhoneHandoff: ObservableObject {
         }
         if !hadVerifiedReading && snapshot.hasRecentVerifiedReading() {
             Libre2ActivityLog.shared.record(Texts_DirectLibre.phoneLoginVerified)
-            if status == Texts_DirectLibre.verifyingPhoneConnection { status = Texts_DirectLibre.phoneLoginVerified }
         }
     }
 

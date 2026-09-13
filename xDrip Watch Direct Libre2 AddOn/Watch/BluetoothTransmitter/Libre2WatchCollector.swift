@@ -198,7 +198,8 @@ final class Libre2WatchCollector: NSObject {
         do {
             let decryptedData = Data(try Libre2Core.decryptBLE(sensorUID: session.sensorUID, data: frame))
             guard latestGlucoseIsValid(in: decryptedData, calibration: session.calibration) else {
-                fail(Texts_DirectLibre.invalidReading)
+                // Like the phone parser, discard an invalid measurement without cycling Bluetooth.
+                onStatus(Texts_DirectLibre.invalidReading)
                 return
             }
 
@@ -366,8 +367,29 @@ extension Libre2WatchCollector: CBPeripheralDelegate {
             fail(Texts_DirectLibre.characteristicsMissing)
             return
         }
-        guard !hasAttemptedUnlock, let session = store.snapshot.session else { return }
+        // Match CGMLibre2Transmitter: enable F002 notifications before attempting F001.
+        peripheral.setNotifyValue(true, for: receiveCharacteristic)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard store.snapshot.owner.allowsWatchConnection,
+            characteristic.uuid == CBUUID(string: ConstantsLibre2.writeCharacteristicUUID)
+        else { return }
+        guard error == nil else { fail(Texts_DirectLibre.unlockWriteFailed); return }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        guard store.snapshot.owner.allowsWatchConnection,
+            !stopRequested, peripheral.state == .connected,
+            characteristic.uuid == CBUUID(string: ConstantsLibre2.receiveCharacteristicUUID)
+        else { return }
+        guard error == nil, characteristic.isNotifying else {
+            fail(Texts_DirectLibre.subscriptionFailed)
+            return
+        }
+        guard !hasAttemptedUnlock, let session = store.snapshot.session, let writeCharacteristic else { return }
         do {
+            // Subscription is confirmed; persist the next counter before the unlock can reach BLE.
             try store.attemptUnlock(id: session.id) { reservedSession in
                 hasAttemptedUnlock = true
                 let payload = Libre2Core.streamingUnlockPayload(
@@ -380,24 +402,6 @@ extension Libre2WatchCollector: CBPeripheralDelegate {
             }
         } catch {
             fail(Texts_DirectLibre.failed(error.localizedDescription))
-        }
-    }
-
-    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard store.snapshot.owner.allowsWatchConnection,
-            characteristic.uuid == CBUUID(string: ConstantsLibre2.writeCharacteristicUUID),
-            let receiveCharacteristic
-        else { return }
-        guard error == nil else { fail(Texts_DirectLibre.unlockWriteFailed); return }
-        peripheral.setNotifyValue(true, for: receiveCharacteristic)
-    }
-
-    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        guard store.snapshot.owner.allowsWatchConnection,
-            characteristic.uuid == CBUUID(string: ConstantsLibre2.receiveCharacteristicUUID)
-        else { return }
-        guard error == nil, characteristic.isNotifying else {
-            fail(Texts_DirectLibre.subscriptionFailed)
             return
         }
         // Like the phone, do not disconnect a subscribed sensor while waiting for glucose.

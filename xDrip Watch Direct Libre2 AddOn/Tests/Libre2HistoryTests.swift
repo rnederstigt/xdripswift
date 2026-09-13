@@ -154,4 +154,182 @@ final class Libre2HistoryTests: XCTestCase {
         XCTAssertThrowsError(try registry.sensorID(for: wrongUID))
         XCTAssertThrowsError(try registry.sensorID(for: reading(90)))
     }
+
+    func testSensorRejectionIsSeparateFromASaveAcknowledgement() throws {
+        let batch = Libre2HistoryBatch(readings: [reading()])
+        let rejection = Libre2HistoryRejection(batchID: batch.id, readingIDs: [reading().id])
+        let dictionary = try rejection.dictionary
+        XCTAssertNil(dictionary[Libre2HistoryAcknowledgement.key])
+        XCTAssertNotNil(dictionary["error"]) // Older Watch builds retain their batch and report the error.
+        let decoded = try Libre2HistoryRejection.decode(dictionary)
+        XCTAssertEqual(decoded.batchID, batch.id)
+        XCTAssertEqual(decoded.readingIDs, [reading().id])
+        XCTAssertThrowsError(try Libre2HistoryRejection.decode([Libre2HistoryRejection.key: Data(count: 100_001)]))
+    }
+
+    func testRejectedOldSensorDoesNotBlockMixedBatchOrNewReadings() throws {
+        let queue = Libre2HistoryQueue { _ in }
+        let old = reading()
+        let replacement = Libre2HistoryReading(sessionID: UUID(), sensorUID: Data(repeating: 9, count: 8),
+            sensorMinute: 100, date: now, glucose: 110)
+        try queue.append(old)
+        try queue.append(replacement)
+        let first = try XCTUnwrap(queue.nextBatch())
+        let later = reading(101, session: UUID())
+        try queue.append(later)
+        let rejection = Libre2HistoryRejection(batchID: first.id, readingIDs: [old.id])
+        try queue.retainUnresolved(rejection)
+        XCTAssertEqual(queue.state.unresolved, [old])
+        XCTAssertEqual(queue.state.pending, [replacement, later])
+        let next = try XCTUnwrap(queue.nextBatch())
+        XCTAssertNotEqual(next.id, first.id)
+        XCTAssertEqual(next.readings, queue.state.pending)
+        XCTAssertThrowsError(try queue.retainUnresolved(rejection))
+        XCTAssertThrowsError(try queue.acknowledge(Libre2HistoryAcknowledgement(batch: first)))
+        XCTAssertEqual(try queue.nextBatch(), next)
+        try queue.acknowledge(Libre2HistoryAcknowledgement(batch: next))
+        XCTAssertNil(try queue.nextBatch())
+        XCTAssertEqual(queue.state.unresolved, [old])
+    }
+
+    func testRejectionMustIdentifyANonemptyUniqueSubsetOfTheCurrentBatch() throws {
+        let queue = Libre2HistoryQueue { _ in }
+        try queue.append(reading())
+        let batch = try XCTUnwrap(queue.nextBatch())
+        for ids in [[], [reading().id, reading().id], [reading(101).id]] {
+            XCTAssertThrowsError(try queue.retainUnresolved(.init(batchID: batch.id, readingIDs: ids)))
+            XCTAssertEqual(queue.state.batch, batch)
+            XCTAssertTrue(queue.state.unresolved.isEmpty)
+        }
+        XCTAssertThrowsError(try queue.retainUnresolved(.init(batchID: UUID(), readingIDs: [reading().id])))
+    }
+
+    func testFailedRejectionPersistenceKeepsTheOriginalBatchAndReadings() throws {
+        var fail = false
+        let queue = Libre2HistoryQueue { _ in if fail { throw Libre2HistoryError.unavailable } }
+        try queue.append(reading())
+        let batch = try XCTUnwrap(queue.nextBatch())
+        fail = true
+        XCTAssertThrowsError(try queue.retainUnresolved(.init(batchID: batch.id, readingIDs: [reading().id])))
+        XCTAssertEqual(queue.state.batch, batch)
+        XCTAssertEqual(queue.state.pending, [reading()])
+        XCTAssertTrue(queue.state.unresolved.isEmpty)
+        fail = false
+        try queue.retainUnresolved(.init(batchID: batch.id, readingIDs: [reading().id]))
+        XCTAssertNil(try queue.nextBatch())
+        XCTAssertEqual(queue.state.unresolved, [reading()])
+        try queue.append(reading()) // Retaining separately must not reset duplicate detection.
+        XCTAssertTrue(queue.state.pending.isEmpty)
+        try queue.append(reading(101))
+        XCTAssertEqual(try queue.nextBatch()?.readings, [reading(101)])
+    }
+
+    func testUnresolvedReadingsSurviveRestartWithoutBlockingPendingData() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("queue.json")
+        let queue = try Libre2HistoryQueue(url: url)
+        try queue.append(reading())
+        let batch = try XCTUnwrap(queue.nextBatch())
+        try queue.append(reading(101))
+        try queue.retainUnresolved(.init(batchID: batch.id, readingIDs: [reading().id]))
+        let restarted = try Libre2HistoryQueue(url: url)
+        XCTAssertEqual(restarted.state.unresolved, [reading()])
+        XCTAssertEqual(try restarted.nextBatch()?.readings, [reading(101)])
+    }
+
+    func testCleanupMessagesRoundTripAndRejectMalformedPayloads() throws {
+        let readings = Libre2UnresolvedReadings(id: UUID(), count: 12)
+        XCTAssertEqual(try Libre2UnresolvedReadings.decode(readings.dictionary), readings)
+        for request in [Libre2HistoryCleanupRequest.inspect, .delete(readings)] {
+            XCTAssertEqual(try Libre2HistoryCleanupRequest.decode(request.dictionary), request)
+        }
+        XCTAssertThrowsError(try Libre2HistoryCleanupRequest.decode([:]))
+        XCTAssertThrowsError(try Libre2HistoryCleanupRequest.decode([Libre2HistoryCleanupRequest.key: Data(count: 1_001)]))
+        XCTAssertThrowsError(try Libre2UnresolvedReadings.decode([:]))
+        XCTAssertThrowsError(try Libre2UnresolvedReadings.decode(Libre2UnresolvedReadings(id: UUID(), count: -1).dictionary))
+    }
+
+    func testDeletionPreservesPendingBatchAndDuplicateDetectionAcrossRestart() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("queue.json")
+        let queue = try Libre2HistoryQueue(url: url)
+        try queue.append(reading())
+        let first = try XCTUnwrap(queue.nextBatch())
+        try queue.retainUnresolved(.init(batchID: first.id, readingIDs: [reading().id]))
+        let confirmed = queue.unresolvedReadings
+        try queue.append(reading(101)) // Ordinary collection does not invalidate the confirmation.
+        let pending = try queue.nextBatch()
+        let minutes = queue.state.lastCollectedMinute
+        try queue.deleteUnresolved(confirmed)
+        let restarted = try Libre2HistoryQueue(url: url)
+        XCTAssertTrue(restarted.state.unresolved.isEmpty)
+        XCTAssertEqual(restarted.state.pending, [reading(101)])
+        XCTAssertEqual(restarted.state.batch, pending)
+        XCTAssertEqual(restarted.state.lastCollectedMinute, minutes)
+        try restarted.append(reading())
+        XCTAssertEqual(restarted.state.pending, [reading(101)])
+        XCTAssertThrowsError(try queue.deleteUnresolved(confirmed)) // Lost-reply retry cannot repeat deletion.
+    }
+
+    func testNewUnresolvedReadingsInvalidateAnEarlierConfirmation() throws {
+        let queue = Libre2HistoryQueue { _ in }
+        let confirmed = queue.unresolvedReadings
+        try queue.append(reading())
+        let batch = try XCTUnwrap(queue.nextBatch())
+        try queue.retainUnresolved(.init(batchID: batch.id, readingIDs: [reading().id]))
+        let before = queue.state
+        XCTAssertNotEqual(queue.unresolvedReadings.id, confirmed.id)
+        XCTAssertThrowsError(try queue.deleteUnresolved(confirmed))
+        XCTAssertEqual(queue.state, before)
+        // A matching count is insufficient, as is a matching revision with the wrong count.
+        XCTAssertThrowsError(try queue.deleteUnresolved(.init(id: confirmed.id, count: 1)))
+        XCTAssertThrowsError(try queue.deleteUnresolved(.init(id: queue.unresolvedReadings.id, count: 2)))
+        XCTAssertEqual(queue.state, before)
+    }
+
+    func testRestartRejectsAStaleConfirmationWithoutLosingReadings() throws {
+        var state = Libre2HistoryQueue.State()
+        state.unresolved = [reading()]
+        let queue = Libre2HistoryQueue(state: state) { _ in }
+        let restarted = Libre2HistoryQueue(state: state) { _ in }
+        XCTAssertThrowsError(try restarted.deleteUnresolved(queue.unresolvedReadings))
+        XCTAssertEqual(restarted.state, state)
+    }
+
+    func testFailedDeletionPersistenceRetainsReadingsAndConfirmation() throws {
+        var disk = Libre2HistoryQueue.State()
+        disk.unresolved = [reading()]
+        var fail = true
+        let queue = Libre2HistoryQueue(state: disk) {
+            if fail { throw Libre2HistoryError.unavailable }
+            disk = $0
+        }
+        let confirmed = queue.unresolvedReadings
+        XCTAssertThrowsError(try queue.deleteUnresolved(confirmed))
+        XCTAssertEqual(queue.state, disk)
+        XCTAssertEqual(queue.state.unresolved, [reading()])
+        XCTAssertEqual(queue.unresolvedReadings, confirmed)
+        fail = false
+        try queue.deleteUnresolved(confirmed)
+        XCTAssertTrue(disk.unresolved.isEmpty)
+    }
+
+    func testLegacyQueueDecodingPreservesAnAlreadyBlockedBatch() throws {
+        let queue = Libre2HistoryQueue { _ in }
+        try queue.append(reading())
+        let batch = try XCTUnwrap(queue.nextBatch())
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(queue.state)) as? [String: Any])
+        legacy.removeValue(forKey: "unresolved")
+        let state = try JSONDecoder().decode(Libre2HistoryQueue.State.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertEqual(state.batch, batch)
+        XCTAssertEqual(state.pending, queue.state.pending)
+        XCTAssertEqual(state.lastCollectedMinute, queue.state.lastCollectedMinute)
+        XCTAssertTrue(state.unresolved.isEmpty)
+        let restarted = Libre2HistoryQueue(state: state) { _ in }
+        try restarted.retainUnresolved(.init(batchID: batch.id, readingIDs: [reading().id]))
+        XCTAssertNil(try restarted.nextBatch())
+        XCTAssertEqual(restarted.state.unresolved, [reading()])
+    }
 }

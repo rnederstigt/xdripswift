@@ -8,10 +8,27 @@ final class Libre2HistoryQueue {
         var pending: [Libre2HistoryReading] = []
         var batch: Libre2HistoryBatch?
         var lastCollectedMinute: [String: UInt16] = [:]
+        var unresolved: [Libre2HistoryReading] = []
+
+        init() {}
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            pending = try values.decode([Libre2HistoryReading].self, forKey: .pending)
+            batch = try values.decodeIfPresent(Libre2HistoryBatch.self, forKey: .batch)
+            lastCollectedMinute = try values.decode([String: UInt16].self, forKey: .lastCollectedMinute)
+            // Existing installations have no unresolved collection; keep their pending batch intact.
+            unresolved = try values.decodeIfPresent([Libre2HistoryReading].self, forKey: .unresolved) ?? []
+        }
     }
 
     private(set) var state: State
     private let persist: (State) throws -> Void
+    private var unresolvedRevision = UUID()
+
+    var unresolvedReadings: Libre2UnresolvedReadings {
+        Libre2UnresolvedReadings(id: unresolvedRevision, count: state.unresolved.count)
+    }
 
     init(state: State = State(), persist: @escaping (State) throws -> Void) {
         self.state = state
@@ -51,6 +68,32 @@ final class Libre2HistoryQueue {
         next.pending.removeAll { savedIDs.contains($0.id) }
         next.batch = nil
         try save(next)
+    }
+
+    /// Persist rejected readings before releasing the batch. No measurements are deleted or
+    /// reassigned to a different sensor. Late replies cannot affect a subsequent batch.
+    func retainUnresolved(_ rejection: Libre2HistoryRejection) throws {
+        let rejectedIDs = Set(rejection.readingIDs)
+        guard let batch = state.batch, rejection.batchID == batch.id,
+            !rejectedIDs.isEmpty, rejectedIDs.count == rejection.readingIDs.count,
+            rejectedIDs.isSubset(of: Set(batch.readings.map(\.id)))
+        else { throw Libre2HistoryError.staleAcknowledgement }
+        var next = state
+        next.unresolved.append(contentsOf: next.pending.filter { rejectedIDs.contains($0.id) })
+        next.pending.removeAll { rejectedIDs.contains($0.id) }
+        next.batch = nil
+        try save(next)
+        unresolvedRevision = UUID()
+    }
+
+    /// Require the count the user confirmed. A restart, new rejection or prior deletion
+    /// invalidates that confirmation. Pending uploads and collection deduplication stay intact.
+    func deleteUnresolved(_ confirmed: Libre2UnresolvedReadings) throws {
+        guard confirmed == unresolvedReadings else { throw Libre2HistoryError.staleCleanup }
+        var next = state
+        next.unresolved.removeAll()
+        try save(next)
+        unresolvedRevision = UUID()
     }
 
     private func save(_ next: State) throws {

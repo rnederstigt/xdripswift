@@ -40,8 +40,34 @@ final class Libre2ReadingPipelineTests: XCTestCase {
         let rising = Libre2ReadingPipeline.trend(from: [sample(0, 115), sample(120, 110)])
         XCTAssertEqual(rising.delta, 5)
         XCTAssertEqual(rising.slopeOrdinal, 2)
-        let flat = Libre2ReadingPipeline.trend(from: [sample(0, 115)])
-        XCTAssertEqual(flat.delta, 0)
-        XCTAssertEqual(flat.slopeOrdinal, 4)
+        let missingHistory = Libre2ReadingPipeline.trend(from: [sample(0, 115)])
+        XCTAssertEqual(missingHistory.delta, 0)
+        XCTAssertEqual(missingHistory.slopeOrdinal, 0)
+    }
+
+    func testTrendMatchesPhoneArrowBoundaries() {
+        for (rate, ordinal) in [(-3.6, 7), (-3.5, 7), (-3.2, 6), (-2, 6), (-1, 5),
+                                (0, 4), (1, 4), (2, 3), (3.2, 2), (3.5, 2), (3.6, 1)] {
+            let trend = Libre2ReadingPipeline.trend(from: [sample(0, 100 + rate), sample(60, 100)])
+            XCTAssertEqual(trend.slopeOrdinal, ordinal, "Rate: \(rate)")
+        }
+    }
+
+    func testTrendHidesForEqualTimestampsAndLongGapsButUsesSubminuteIntervals() {
+        for (gap, ordinal) in [(0.0, 0), (30, 1), (21 * 60, 4), (21 * 60 + 1, 0)] {
+            let trend = Libre2ReadingPipeline.trend(from: [sample(0, 102), sample(gap, 100)])
+            XCTAssertEqual(trend.slopeOrdinal, ordinal, "Gap: \(gap)")
+            XCTAssertEqual(trend.delta, 2)
+        }
+    }
+
+    func testMmolDeltaSubtractsRoundedDisplayedValues() {
+        let samples = [sample(0, 109), sample(60, 100)]
+        let mgDl = Libre2ReadingPipeline.trend(from: samples)
+        let mmol = Libre2ReadingPipeline.trend(from: samples, isMgDl: false)
+        XCTAssertEqual(mgDl.delta, 9)
+        // 6.0 - 5.6 = 0.4; converting the 9 mg/dL difference instead would display 0.5.
+        XCTAssertEqual(mmol.delta, 0.4, accuracy: 0.000001)
+        XCTAssertEqual(mmol.slopeOrdinal, mgDl.slopeOrdinal)
     }
 }

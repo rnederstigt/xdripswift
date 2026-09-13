@@ -48,6 +48,14 @@ The two original double-tap handlers call `WatchStateModel.refreshAfterDoubleTap
 
 A manual retry starts an idle collector immediately, bypassing any pending failure backoff. For an already connected sensor, it requires a reading at least three minutes old; if no reading has ever arrived on this connection, it uses the connection timestamp. It waits for confirmed disconnect before reconnecting and does not clear parser history or reset credentials/counters. Scanning, connecting, disconnecting and fresh connections are left alone. No polling timer, Watch ownership control, runtime session or NFC change is involved.
 
+## Phone behaviour reused by the Watch
+
+The collector follows `CGMLibre2Transmitter`'s streaming startup: discover F001/F002, enable F002 notifications, wait for subscription confirmation, then reserve/persist the next counter and write F001. Duplicate subscription callbacks do not send another unlock. A failed subscription consumes no counter; a failed write still consumes its reserved counter. Ownership and confirmed-disconnect barriers remain in place.
+
+Invalid decoded glucose is discarded without disconnecting, as in the phone parser. The next valid frame can resume readings on the same connection. Native calibration validation remains mandatory; invalid/raw fallback values are not displayed or uploaded. Bluetooth setup and unlock failures still use the existing recovery path.
+
+`Libre2ReadingPipeline.trend` follows `Calibrator.findSlope`, `BgReading.slopeOrdinal` and `WatchManager.currentBgReadings`: the same arrow thresholds, elapsed-time calculation, hidden slope with insufficient history/equal timestamps/gaps over 21 minutes, and mmol/L rounding before subtraction. A unit change recalculates delta from the stored mg/dL readings. `Scripts/check_phone_alignment.py` executes the actual phone methods against the Watch implementation with identical inputs. This comparison does not import the phone's separate calibration, smoothing or database pipeline into the Watch.
+
 ## Ordinary NFC recovery
 
 With no experimental state, the NFC reader uses its original code (42), commands, callbacks, notices and retry behaviour. The add-on only marks the in-progress scan so a simultaneous handoff cannot begin. No experimental journal write is required.
@@ -62,7 +70,17 @@ After Direct Libre use, an ordinary scan retires the old session, persists a new
 
 `iPhone/Managers/Libre2PhoneHistorySync` maps each handoff to its original Core Data sensor via `Libre2HistoryRegistry`. It rejects unknown/deleted sensors rather than guessing the active sensor. Deterministic reading IDs and switch-boundary overlap checks prevent duplicates. Saving the child, main and persistent-store contexts precedes acknowledgement. Imports refresh charts/widgets through one root-coordinator hook without invoking new-reading alarms or treating imported readings as evidence of a phone BLE login.
 
+Unmatched sensor readings receive a separate `Libre2HistoryRejection`, bound to the immutable batch ID and the affected reading IDs. No rows from a mixed batch are imported until all its mappings resolve. The Watch persists rejected readings in the journal's `unresolved` collection, removes only those readings from `pending`, then retries the valid remainder under a new batch ID. Duplicate or late responses cannot resolve a newer batch. Interactive and queued responses use the existing WatchConnectivity route.
+
+Unresolved readings survive restart and NFC recovery; they are retained locally and not automatically retried or reassigned. Transport, registry-file and database-save errors do not classify readings as unresolved: the original batch remains available for retry. Existing journals decode with an empty unresolved collection, preserving any previously blocked batch. Both phone and Watch need this update for the new rejection response; an older Watch receives an ordinary error and keeps its data.
+
 The durable outbox is retained until acknowledged. Large unacknowledged histories still require whole-file writes; this is a known profiling/optimization candidate, not a reason to discard measurements during this refactor.
+
+`Libre2HistoryCleanupRequest` uses the existing interactive Watch message route, entirely inside the add-on. The experimental page requests a count only when **Delete unresolved readings** is tapped, then asks for confirmation. `Libre2HistoryQueue` binds that count to an in-memory revision; new unresolved readings, deletion or a Watch restart invalidate it. A confirmed deletion clears only `unresolved` and saves before replying. It does not reset the pending batch, collection-minute deduplication, ownership or counters. Cleanup is never sent through queued background transfers or retried automatically; after a lost reply, another tap reads the remaining count. No additional polling, host delegate hook or journal migration is needed.
+
+## Phone connection checklist
+
+There is no manual verification/reconnect action on the experimental page. The automatic handoff prerequisite remains: an acknowledged phone unlock write followed by a recent native BLE reading with the current credentials. If a restored stream cannot satisfy it, the checklist directs the user to Stop Scanning/Disconnect on the ordinary sensor page, then Connect and an NFC scan. No new scan path, dialog or ownership transition is introduced.
 
 ## Compatibility and upstream integration
 

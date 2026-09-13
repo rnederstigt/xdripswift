@@ -59,20 +59,30 @@ final class Libre2PhoneHistorySync {
             do {
                 let count = try await importReadings(batch)
                 let acknowledgement = try Libre2HistoryAcknowledgement(batch: batch).dictionary
-                if let reply {
-                    reply(acknowledgement)
-                } else if session.activationState == .activated {
-                    session.transferUserInfo(acknowledgement)
-                }
+                respond(acknowledgement, reply: reply)
                 Libre2ActivityLog.shared.record("Saved \(count) Direct Watch readings on iPhone.")
                 // Also refresh after a duplicate: an earlier attempt may have saved into the
                 // parent context and then failed at the final persistent-store save.
                 NotificationCenter.default.post(name: Self.didImport, object: self)
+            } catch let rejection as Libre2HistoryRejection {
+                do {
+                    respond(try rejection.dictionary, reply: reply)
+                    Libre2ActivityLog.shared.record(
+                        "History sync: \(rejection.readingIDs.count) unmatched readings remain on Watch; other readings can continue uploading.")
+                } catch { report(error) }
             } catch {
                 report(error)
                 reply?(["error": error.localizedDescription])
                 // No success acknowledgement. The Watch retains and retries the batch.
             }
+        }
+    }
+
+    private func respond(_ dictionary: [String: Any], reply: (([String: Any]) -> Void)?) {
+        if let reply {
+            reply(dictionary)
+        } else if session.activationState == .activated {
+            session.transferUserInfo(dictionary)
         }
     }
 
@@ -102,22 +112,35 @@ final class Libre2PhoneHistorySync {
         if let current = Libre2SessionStore.shared.snapshot.session,
             batch.readings.contains(where: { $0.sessionID == current.id }),
             !registry.entries.contains(where: { $0.sessionID == current.id }) {
-            try await register(current)
+            do {
+                try await register(current)
+            } catch Libre2HistoryError.unknownSensor {
+                // Classify unmatched readings below, including a deleted active sensor.
+            }
         }
-        let sensorIDs = try batch.readings.map { try registry.sensorID(for: $0) }
+        let sensorIDs: [String?] = try batch.readings.map { reading in
+            do { return try registry.sensorID(for: reading) }
+            catch Libre2HistoryError.unknownSensor { return nil }
+        }
         let context = coreDataManager.privateChildManagedObjectContext()
         let count = try await context.perform {
             // Resolve the entire batch before inserting any rows.
             var sensors: [String: Sensor] = [:]
-            for id in Set(sensorIDs) {
+            for id in Set(sensorIDs.compactMap { $0 }) {
                 let request = Sensor.fetchRequest()
                 request.predicate = NSPredicate(format: "id == %@", id)
                 request.fetchLimit = 1
-                guard let sensor = try context.fetch(request).first else { throw Libre2HistoryError.unknownSensor }
-                sensors[id] = sensor
+                sensors[id] = try context.fetch(request).first
+            }
+            let unresolvedIDs = zip(batch.readings, sensorIDs).compactMap { sample, sensorID in
+                sensorID.flatMap { sensors[$0] } == nil ? sample.id : nil
+            }
+            guard unresolvedIDs.isEmpty else {
+                throw Libre2HistoryRejection(batchID: batch.id, readingIDs: unresolvedIDs)
             }
             var inserted = 0
             for (sample, sensorID) in zip(batch.readings, sensorIDs) {
+                guard let sensorID else { continue } // All mappings were resolved above.
                 let request = BgReading.fetchRequest()
                 // Deterministic IDs cover repeated/cross-handoff Watch samples. At a switch
                 // boundary prefer an existing phone reading within half a minute.

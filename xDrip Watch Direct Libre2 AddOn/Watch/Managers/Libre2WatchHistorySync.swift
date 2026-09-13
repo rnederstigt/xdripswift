@@ -10,7 +10,8 @@ final class Libre2WatchHistorySync {
     private var lastAttempt: (id: UUID, date: Date)?
     private var activationObserver: NSObjectProtocol?
 
-    init() {
+    init(queue: Libre2HistoryQueue? = nil) {
+        self.queue = queue
         activationObserver = NotificationCenter.default.addObserver(
             forName: WKExtension.applicationDidBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.resume() }
@@ -78,15 +79,47 @@ final class Libre2WatchHistorySync {
 
     @discardableResult
     func receive(_ dictionary: [String: Any]) -> Bool {
-        guard dictionary[Libre2HistoryAcknowledgement.key] != nil else { return false }
+        guard dictionary[Libre2HistoryAcknowledgement.key] != nil || dictionary[Libre2HistoryRejection.key] != nil else { return false }
         do {
-            let acknowledgement = try Libre2HistoryAcknowledgement.decode(dictionary)
-            try outbox().acknowledge(acknowledgement)
-            Libre2ActivityLog.shared.record("History saved on iPhone (\(acknowledgement.readingIDs.count) readings).")
-            flush()
+            if dictionary[Libre2HistoryRejection.key] != nil {
+                let rejection = try Libre2HistoryRejection.decode(dictionary)
+                try outbox().retainUnresolved(rejection)
+                Libre2ActivityLog.shared.record(
+                    "History sync: retained \(rejection.readingIDs.count) unmatched readings on Watch; continuing with other readings.")
+            } else {
+                let acknowledgement = try Libre2HistoryAcknowledgement.decode(dictionary)
+                try outbox().acknowledge(acknowledgement)
+                Libre2ActivityLog.shared.record("History saved on iPhone (\(acknowledgement.readingIDs.count) readings).")
+            }
         } catch Libre2HistoryError.staleAcknowledgement {
             // Duplicate delivery is normal. It must not clear a newer batch.
-        } catch { report(error) }
+        } catch {
+            report(error)
+            return true
+        }
+        // A late queued reply may have resolved an earlier interactive send. Once that send
+        // completes, its duplicate reply must still allow the next batch to leave the outbox.
+        flush()
+        return true
+    }
+
+    /// Uses the existing interactive message delegate; independent of the active sensor.
+    @discardableResult
+    func receiveCleanup(_ dictionary: [String: Any], reply: ([String: Any]) -> Void) -> Bool {
+        guard dictionary[Libre2HistoryCleanupRequest.key] != nil else { return false }
+        do {
+            let request = try Libre2HistoryCleanupRequest.decode(dictionary)
+            let queue = try outbox()
+            if case .delete(let confirmed) = request {
+                try queue.deleteUnresolved(confirmed)
+                Libre2ActivityLog.shared.record("Deleted \(confirmed.count) unresolved readings from Watch.")
+            }
+            // Success is acknowledged only after the journal has been saved.
+            reply(try queue.unresolvedReadings.dictionary)
+        } catch {
+            report(error)
+            reply(["error": error.localizedDescription])
+        }
         return true
     }
 

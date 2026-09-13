@@ -40,14 +40,18 @@ final class Libre2WatchManager {
 
     func connectionActivated() { historySync.resume() }
 
+    /// Existing host hook also accepts sensor-matching rejections; no extra WCSession route is needed.
     @discardableResult
     func receiveHistoryAcknowledgement(_ dictionary: [String: Any]) -> Bool {
         historySync.receive(dictionary)
     }
 
     func receive(_ dictionary: [String: Any], reply: @escaping ([String: Any]) -> Void) {
-        guard dictionary[Libre2HandoffMessage.key] != nil else { reply([:]); return }
-        DispatchQueue.main.async { self.handoff.receive(dictionary, reply: reply) }
+        DispatchQueue.main.async {
+            if self.historySync.receiveCleanup(dictionary, reply: reply) { return }
+            guard dictionary[Libre2HandoffMessage.key] != nil else { reply([:]); return }
+            self.handoff.receive(dictionary, reply: reply)
+        }
     }
 
     func recordReachability() {
@@ -63,13 +67,13 @@ final class Libre2WatchManager {
         guard let display else { return }
         display.updateDirectLibreSensorAge(sensorAge)
         let history = Libre2ReadingPipeline.merging(samples, with: display.libreReadingHistory)
-        let trend = Libre2ReadingPipeline.trend(from: history)
+        let trend = Libre2ReadingPipeline.trend(from: history, isMgDl: display.libreUsesMgDl)
         accept(
             Libre2ReadingBatch(
                 values: history.map(\.glucoseLevelRaw),
                 dates: history.map { $0.timeStamp.timeIntervalSince1970 },
                 slope: trend.slopeOrdinal,
-                delta: display.libreUsesMgDl ? trend.delta : trend.delta / 18.0182,
+                delta: trend.delta,
                 generatedAt: Date()))
     }
 

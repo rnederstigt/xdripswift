@@ -62,7 +62,7 @@ extension Libre2PhoneHandoff {
     }
 
     var canSwitchDevice: Bool {
-        guard !isStarting, !isVerifyingPhoneConnection, !Libre2SessionStore.shared.phoneNFCIsActive else { return false }
+        guard !isStarting, !Libre2SessionStore.shared.phoneNFCIsActive else { return false }
         switch Libre2SessionStore.shared.snapshot.phoneSwitchAction {
         case .switchToWatch: return canStart
         case .returnToPhone: return canCancel

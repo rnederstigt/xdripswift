@@ -74,8 +74,64 @@ struct Libre2HistoryAcknowledgement: Codable {
     }
 }
 
+/// A sensor-matching rejection, never a save acknowledgement or a transient transport error.
+/// Only the listed readings are retained separately; the rest of the batch can be retried.
+struct Libre2HistoryRejection: Codable, Error {
+    static let key = "libre2HistoryRejection"
+    let batchID: UUID
+    let readingIDs: [String]
+
+    var dictionary: [String: Any] {
+        get throws {
+            [Self.key: try JSONEncoder().encode(self),
+             "error": Libre2HistoryError.unknownSensor.localizedDescription]
+        }
+    }
+
+    static func decode(_ dictionary: [String: Any]) throws -> Self {
+        guard let data = dictionary[key] as? Data, data.count <= 100_000 else {
+            throw Libre2HistoryError.invalidBatch
+        }
+        return try JSONDecoder().decode(Self.self, from: data)
+    }
+}
+
+/// Interactive phone controls only. Cleanup is never queued for background delivery.
+enum Libre2HistoryCleanupRequest: Codable, Equatable {
+    static let key = "libre2HistoryCleanup"
+    case inspect
+    case delete(Libre2UnresolvedReadings)
+
+    var dictionary: [String: Any] { get throws { [Self.key: try JSONEncoder().encode(self)] } }
+
+    static func decode(_ dictionary: [String: Any]) throws -> Self {
+        guard let data = dictionary[key] as? Data, data.count <= 1_000 else {
+            throw Libre2HistoryError.invalidBatch
+        }
+        return try JSONDecoder().decode(Self.self, from: data)
+    }
+}
+
+/// A count tied to one revision of the Watch's unresolved collection, not to sensor ownership.
+struct Libre2UnresolvedReadings: Codable, Equatable, Identifiable {
+    static let key = "libre2UnresolvedReadings"
+    let id: UUID
+    let count: Int
+
+    var dictionary: [String: Any] { get throws { [Self.key: try JSONEncoder().encode(self)] } }
+
+    static func decode(_ dictionary: [String: Any]) throws -> Self {
+        guard let data = dictionary[key] as? Data, data.count <= 1_000 else {
+            throw Libre2HistoryError.invalidBatch
+        }
+        let readings = try JSONDecoder().decode(Self.self, from: data)
+        guard readings.count >= 0 else { throw Libre2HistoryError.invalidBatch }
+        return readings
+    }
+}
+
 enum Libre2HistoryError: LocalizedError {
-    case invalidReading, invalidBatch, unknownSensor, staleAcknowledgement, unavailable
+    case invalidReading, invalidBatch, unknownSensor, staleAcknowledgement, unavailable, staleCleanup
 
     var errorDescription: String? {
         switch self {
@@ -84,6 +140,7 @@ enum Libre2HistoryError: LocalizedError {
         case .unknownSensor: return "Direct Libre history could not be matched to its original iPhone sensor. Readings remain on the Watch."
         case .staleAcknowledgement: return "Ignored an outdated Direct Libre history acknowledgement."
         case .unavailable: return "Direct Libre history storage is unavailable."
+        case .staleCleanup: return "The unresolved readings changed or the Watch app restarted. Check the count again before deleting."
         }
     }
 }

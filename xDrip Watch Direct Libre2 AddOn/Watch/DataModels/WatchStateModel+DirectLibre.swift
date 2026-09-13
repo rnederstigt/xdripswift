@@ -24,7 +24,7 @@ extension WatchStateModel: Libre2WatchDisplay {
     func receiveDirectLibreUnits(_ dictionary: [String: Any]) -> Bool {
         guard let units = Libre2WatchPreferences().receiveUnits(dictionary), units != isMgDl else { return false }
         if directLibre.isDirect {
-            deltaValueInUserUnit = units ? deltaValueInUserUnit * 18.0182 : deltaValueInUserUnit / 18.0182
+            deltaValueInUserUnit = Libre2ReadingPipeline.trend(from: libreReadingHistory, isMgDl: units).delta
         }
         isMgDl = units
         return true

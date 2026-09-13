@@ -365,7 +365,7 @@ class Texts_DirectLibre {
     static let phoneLoginHelp = NSLocalizedString(
         "phoneLoginHelp", tableName: filename, bundle: .main,
         value:
-            "Requires a successful xDrip unlock write and a native BLE reading after sensor warm-up. An already-streaming connection may need Verify phone connection.",
+            "Requires a successful xDrip unlock write and a fresh native BLE reading after sensor warm-up. If this stays unchecked, use Stop Scanning or Disconnect on the sensor page, then Connect and scan the sensor with NFC. Wait for fresh glucose before switching to Watch.",
         comment: "Direct Libre checklist")
     static let noPhoneBLEReading = NSLocalizedString(
         "noPhoneBLEReading", tableName: filename, bundle: .main,
@@ -379,18 +379,6 @@ class Texts_DirectLibre {
             comment: "Direct Libre checklist; time of last actual BLE reading")
         return String(format: format, date.formatted(date: .omitted, time: .standard))
     }
-    static let verifyPhoneConnection = NSLocalizedString(
-        "verifyPhoneConnection", tableName: filename, bundle: .main,
-        value: "Verify phone connection", comment: "Direct Libre checklist")
-    static let verifyPhoneConnectionHelp = NSLocalizedString(
-        "verifyPhoneConnectionHelp", tableName: filename, bundle: .main,
-        value:
-            "Reconnects xDrip over Bluetooth using the existing sensor credentials. Keep Bluetooth on and wait for fresh glucose. No NFC scan is performed.",
-        comment: "Direct Libre checklist")
-    static let verifyingPhoneConnection = NSLocalizedString(
-        "verifyingPhoneConnection", tableName: filename, bundle: .main,
-        value: "Verifying phone connection: reconnecting over BLE. Keep Bluetooth on and wait for the next sensor reading.",
-        comment: "Direct Libre checklist")
     static let phoneBLEReadingReceived = NSLocalizedString(
         "phoneBLEReadingReceived", tableName: filename, bundle: .main,
         value: "Fresh Libre BLE reading received on iPhone", comment: "Direct Libre diagnostic log")
@@ -400,6 +388,35 @@ class Texts_DirectLibre {
     static let phoneLoginWriteFailed = NSLocalizedString(
         "phoneLoginWriteFailed", tableName: filename, bundle: .main,
         value: "Phone unlock write failed; receiving glucose alone does not verify the phone login", comment: "Direct Libre diagnostic log")
+
+    // MARK: - Unresolved Watch history
+
+    static let deleteUnresolvedReadings = NSLocalizedString(
+        "deleteUnresolvedReadings", tableName: filename, bundle: .main,
+        value: "Delete unresolved readings", comment: "Direct Libre history cleanup button")
+    static let noUnresolvedReadings = NSLocalizedString(
+        "noUnresolvedReadings", tableName: filename, bundle: .main,
+        value: "No unresolved readings stored on Watch.", comment: "Direct Libre history cleanup")
+    static let historyCleanupNeedsWatch = NSLocalizedString(
+        "historyCleanupNeedsWatch", tableName: filename, bundle: .main,
+        value: "Open xDrip on Watch to check and delete unresolved readings.", comment: "Direct Libre history cleanup")
+    static let historyCleanupNoReply = NSLocalizedString(
+        "historyCleanupNoReply", tableName: filename, bundle: .main,
+        value: "Watch did not confirm the result. Open xDrip on Watch and tap again to check the remaining count.",
+        comment: "Direct Libre history cleanup; deletion may have succeeded despite a lost reply")
+    static func confirmDeleteUnresolved(_ count: Int) -> String {
+        let format = NSLocalizedString(
+            "confirmDeleteUnresolved", tableName: filename, bundle: .main,
+            value: "Permanently delete %d unresolved readings stored on Watch? These could not be matched to their original iPhone sensor. Pending uploads and iPhone history will be kept.",
+            comment: "Direct Libre history deletion confirmation")
+        return String(format: format, count)
+    }
+    static func deletedUnresolved(_ count: Int) -> String {
+        let format = NSLocalizedString(
+            "deletedUnresolved", tableName: filename, bundle: .main,
+            value: "Deleted %d unresolved readings from Watch.", comment: "Direct Libre history cleanup result")
+        return String(format: format, count)
+    }
 
     // MARK: - Compact phone control page
 

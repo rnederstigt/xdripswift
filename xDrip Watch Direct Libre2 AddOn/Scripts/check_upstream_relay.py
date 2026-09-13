@@ -54,7 +54,7 @@ struct Libre2Sample { let timeStamp: Date; let glucoseLevelRaw: Double }
 final class DirectMode { var isDirect = false }
 enum Texts_WatchApp { static let lastReading = "Last reading"; static let noSensorData = "No data" }
 extension Date { func daysAndHoursAgo(appendAgo: Bool) -> String { "display formatting stub" } }
-'''+(r/'xDrip Watch Direct Libre2 AddOn/Shared/Managers/Libre2ReadingPipeline.swift').read_text()+ '\nfinal class UpstreamWatch {\n'+common+outer+'\n'+oldbg+'\n}\nfinal class AddOnWatch {\n'+common+outer+'\n'+newbg+"\n"+apply+'''
+'''+(r/'xDrip Watch Direct Libre2 AddOn/Shared/Constants/ConstantsLibre2.swift').read_text()+(r/'xDrip Watch Direct Libre2 AddOn/Shared/Managers/Libre2ReadingPipeline.swift').read_text()+ '\nfinal class UpstreamWatch {\n'+common+outer+'\n'+oldbg+'\n}\nfinal class AddOnWatch {\n'+common+outer+'\n'+newbg+"\n"+apply+'''
     func deliverDirect(_ batch: Libre2ReadingBatch) {
         guard batch.isAcceptable(after: bgReadingDates.first) else { return }
         applyLibreReadings(batch)

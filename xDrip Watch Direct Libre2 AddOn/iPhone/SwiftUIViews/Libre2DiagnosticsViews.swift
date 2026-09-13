@@ -2,9 +2,6 @@ import SwiftUI
 
 struct Libre2ChecklistView: View {
     let groups: [Libre2ChecklistGroup]
-    let showsVerification: Bool
-    let canVerify: Bool
-    let verify: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -17,11 +14,6 @@ struct Libre2ChecklistView: View {
                     } else {
                         ForEach(group.items) { item in
                             checklistRow(item)
-                        }
-                        if group.id == .phone && showsVerification {
-                            Button(Texts_DirectLibre.verifyPhoneConnection, action: verify)
-                                .disabled(!canVerify)
-                            Text(Texts_DirectLibre.verifyPhoneConnectionHelp).font(.caption).foregroundColor(.secondary)
                         }
                     }
                 }

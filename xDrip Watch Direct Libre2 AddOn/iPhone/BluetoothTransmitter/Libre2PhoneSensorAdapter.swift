@@ -58,7 +58,6 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
     var usesNativeAlgorithm: Bool { transmitter?.isWebOOPEnabled() == true }
     func connect() { transmitter?.connect() }
     func disconnect(completion: @escaping () -> Void) { transmitter?.disconnect(completion: completion) }
-    func startBLEScanning() { transmitter?.startBLEScanning() }
 
     // MARK: - BLE authentication and readings
 

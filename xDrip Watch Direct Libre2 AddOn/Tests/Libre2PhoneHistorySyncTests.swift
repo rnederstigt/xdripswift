@@ -95,7 +95,56 @@ final class Libre2PhoneHistorySyncTests: XCTestCase {
                                          registry: Libre2HistoryRegistry { _ in })
         let reply = try await send(Libre2HistoryBatch(readings: [sample]), to: sync)
         XCTAssertNil(reply[Libre2HistoryAcknowledgement.key])
+        XCTAssertEqual(try Libre2HistoryRejection.decode(reply).readingIDs, [sample.id])
         XCTAssertTrue(try diskReadings(manager).isEmpty)
+    }
+
+    func testDeletedSensorInMixedBatchDoesNotBlockReplacementSensorUpload() async throws {
+        let (manager, original, registry, old) = try await fixture()
+        let replacement = Sensor(startDate: Date().addingTimeInterval(-3600), nsManagedObjectContext: manager.mainManagedObjectContext)
+        let sample = Libre2HistoryReading(sessionID: UUID(), sensorUID: Data(repeating: 9, count: 8),
+            sensorMinute: 100, date: old.date, glucose: 120)
+        let mappings = Libre2HistoryRegistry(entries: registry.entries + [
+            .init(sessionID: sample.sessionID, sensorUID: sample.sensorUID, sensorID: replacement.id,
+                  preparedAt: sample.date.addingTimeInterval(-60))
+        ]) { _ in }
+        manager.mainManagedObjectContext.delete(original)
+        try manager.mainManagedObjectContext.save()
+        let store = manager.privateManagedObjectContext
+        try await store.perform { try store.save() }
+        let sync = Libre2PhoneHistorySync(coreDataManager: manager, session: .default, registry: mappings)
+        let queue = Libre2HistoryQueue { _ in }
+        try queue.append(old)
+        try queue.append(sample)
+        let mixed = try XCTUnwrap(queue.nextBatch())
+        let reply = try await send(mixed, to: sync)
+        XCTAssertNil(reply[Libre2HistoryAcknowledgement.key])
+        XCTAssertTrue(try diskReadings(manager).isEmpty)
+        let rejection = try Libre2HistoryRejection.decode(reply)
+        XCTAssertEqual(rejection.batchID, mixed.id)
+        XCTAssertEqual(rejection.readingIDs, [old.id])
+        try queue.retainUnresolved(rejection)
+        let next = try XCTUnwrap(queue.nextBatch())
+        XCTAssertEqual(next.readings, [sample])
+        let saved = try await send(next, to: sync)
+        try queue.acknowledge(Libre2HistoryAcknowledgement.decode(saved))
+        XCTAssertEqual(try diskReadings(manager).first?.sensorID, replacement.id)
+        XCTAssertNil(try queue.nextBatch())
+        XCTAssertEqual(queue.state.unresolved, [old])
+    }
+
+    func testUnknownSessionInMixedBatchRejectsOnlyUnmatchedReadings() async throws {
+        let (manager, _, registry, known) = try await fixture()
+        let unknown = Libre2HistoryReading(sessionID: UUID(), sensorUID: Data(repeating: 9, count: 8),
+            sensorMinute: 100, date: known.date, glucose: 120)
+        let sync = Libre2PhoneHistorySync(coreDataManager: manager, session: .default, registry: registry)
+        let reply = try await send(Libre2HistoryBatch(readings: [unknown, known]), to: sync)
+        XCTAssertNil(reply[Libre2HistoryAcknowledgement.key])
+        XCTAssertEqual(try Libre2HistoryRejection.decode(reply).readingIDs, [unknown.id])
+        XCTAssertTrue(try diskReadings(manager).isEmpty)
+        let saved = try await send(Libre2HistoryBatch(readings: [known]), to: sync)
+        XCTAssertNotNil(saved[Libre2HistoryAcknowledgement.key])
+        XCTAssertEqual(try diskReadings(manager).count, 1)
     }
 
     func testPhoneOverlapIsPreservedButDistinctWatchMinutesAreNotSuppressed() async throws {
