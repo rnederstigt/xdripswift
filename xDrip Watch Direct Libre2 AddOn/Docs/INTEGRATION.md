@@ -38,6 +38,16 @@ Each switch has an immutable session ID, sensor identity, conversion coefficient
 
 Keep the disconnect barriers, counter persistence, stale-ID checks and phase checks together when porting. A cancellation request is not a confirmed disconnect. Repeated messages are expected; they must not overwrite newer credentials or counters. Unchanged journal transitions no longer rewrite the file.
 
+## Watch reconnection and manual refresh
+
+The Direct Watch antenna reflects only the collector's Bluetooth connection. Connection/disconnection callbacks refresh the existing Watch model, including before any glucose arrives and during return to the phone. Reading age remains separate; the antenna no longer stores its own freshness state or subscribes to the display timer. Ordinary relay mode keeps its original marker.
+
+`Libre2WatchCollector` follows the phone Libre transport's ordinary reconnect policy: retrieve the saved peripheral before scanning, request reconnection immediately after range loss, and let a known peripheral's request remain pending while out of range. Only a scan-discovered connection gets the phone's five-second limit (`BluetoothTransmitter.maxTimeToWaitForPeripheralResponse`); `didConnect` cancels it. Scanning and waiting for glucose have no automatic deadline. A timed-out scan-discovered attempt falls back to scanning after confirmed cancellation. Explicit protocol failures retain the existing five-second backoff to avoid rapid unlock/failure loops.
+
+The two original double-tap handlers call `WatchStateModel.refreshAfterDoubleTap()` in the add-on extension. It routes ordinary relay mode to the original phone refresh, and direct mode through the Watch manager/handoff to the collector. Only persisted `.watch` ownership permits a retry. The original display timer and automatic phone requests never invoke the retry method.
+
+A manual retry starts an idle collector immediately, bypassing any pending failure backoff. For an already connected sensor, it requires a reading at least three minutes old; if no reading has ever arrived on this connection, it uses the connection timestamp. It waits for confirmed disconnect before reconnecting and does not clear parser history or reset credentials/counters. Scanning, connecting, disconnecting and fresh connections are left alone. No polling timer, Watch ownership control, runtime session or NFC change is involved.
+
 ## Ordinary NFC recovery
 
 With no experimental state, the NFC reader uses its original code (42), commands, callbacks, notices and retry behaviour. The add-on only marks the in-progress scan so a simultaneous handoff cannot begin. No experimental journal write is required.

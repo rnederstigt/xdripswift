@@ -15,15 +15,11 @@ final class Libre2WatchHandoff {
     private var collectorInstance: Libre2WatchCollector?
     private var lastReachability: Bool?
     private var returnRetryWorkItem: DispatchWorkItem?
-    private(set) var lastDirectReading = Date.distantPast
 
-    var isReceiving: Bool {
-        owner == .watch && collectorInstance?.isConnected == true
-            && Date().timeIntervalSince(lastDirectReading) < ConstantsLibre2.recentReadingInterval
-    }
+    var isConnected: Bool { collectorInstance?.isConnected == true }
     var indicatorText: String {
-        if isReceiving { return Texts_DirectLibre.directConnected }
-        return isDirect ? Texts_DirectLibre.directWaiting : Texts_DirectLibre.phoneRelay
+        if isConnected { return Texts_DirectLibre.directConnected }
+        return isDirect ? Texts_DirectLibre.directDisconnected : Texts_DirectLibre.phoneRelay
     }
 
     var owner: Libre2Owner { store.snapshot.owner }
@@ -51,8 +47,12 @@ final class Libre2WatchHandoff {
         collector.onStatus = { [weak self] status in
             self?.publishStatus(status)
         }
+        collector.onConnectionChanged = { [weak self] in
+            // Refresh immediately, including before first glucose and during a return.
+            guard let self else { return }
+            self.onStatus(self.indicatorText)
+        }
         collector.onReadings = { [weak self] samples, sensorAge in
-            self?.lastDirectReading = samples.first?.timeStamp ?? .distantPast
             self?.onReadings(samples, sensorAge)
         }
         collector.onCollectedReading = { [weak self] sample, sensorMinute, session in
@@ -68,6 +68,11 @@ final class Libre2WatchHandoff {
     }
 
     // MARK: - Restore persisted ownership
+
+    func retryConnection() {
+        guard owner.allowsWatchConnection else { return }
+        collector.retryConnection()
+    }
 
     func restore() {
         switch store.snapshot.owner {

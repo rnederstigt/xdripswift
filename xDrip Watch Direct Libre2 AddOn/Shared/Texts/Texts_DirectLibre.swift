@@ -120,6 +120,16 @@ class Texts_DirectLibre {
 
     // MARK: - Bluetooth collection
 
+    static let waitingForFirstReading = NSLocalizedString(
+        "waitingForFirstReading", tableName: filename, bundle: .main,
+        value: "Bluetooth connected; waiting for the first Libre reading",
+        comment: "Direct Libre experiment")
+
+    static let retryingConnection = NSLocalizedString(
+        "retryingConnection", tableName: filename, bundle: .main,
+        value: "Manual retry: reconnecting the stale Libre connection",
+        comment: "Direct Libre experiment")
+
     static let bluetoothUnavailable = NSLocalizedString(
         "bluetoothUnavailable", tableName: filename, bundle: .main,
         value: "Failed: Bluetooth unavailable",
@@ -345,8 +355,8 @@ class Texts_DirectLibre {
         "checkMissing", tableName: filename, bundle: .main, value: "Needs attention",
         comment: "Direct Libre experiment")
 
-    static let directWaiting = NSLocalizedString(
-        "directWaiting", tableName: filename, bundle: .main, value: "Direct Libre · waiting / stale",
+    static let directDisconnected = NSLocalizedString(
+        "directDisconnected", tableName: filename, bundle: .main, value: "Direct Libre · not connected",
         comment: "Phone-controlled Libre proof of concept")
 
     static let phoneLoginVerified = NSLocalizedString(

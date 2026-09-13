@@ -7,11 +7,15 @@ A phone-controlled prototype for moving an already working Libre 2 Bluetooth con
 1. Build and install matching iPhone and Watch apps. Open both apps once to synchronize glucose units.
 2. On iPhone, open **Settings → Advanced Settings → Direct Libre (Experimental)**. The checklist shows companion availability, sensor settings and a recent authenticated phone reading.
 3. If glucose is arriving but the phone login has not been observed, use **Verify phone connection** in the checklist. This reconnects with existing credentials; it does not scan NFC.
-4. Tap **Connect to Watch**. Keep both apps open until the Watch's antenna beside the reading age turns green. Grey means connecting, disconnected or stale.
+4. Tap **Connect to Watch**. Keep both apps open until the Watch's antenna beside the reading age turns green. Green means the Watch's Bluetooth link to the sensor is connected, even before the first glucose reading; grey means it is not connected. The reading age (or “Waiting…”) separately shows whether glucose is available and how old it is.
 5. Use the same phone button to return to iPhone or cancel an unfinished switch. An interrupted return can be retried with both apps open.
 6. If return cannot finish, use the ordinary Libre Add/Connect NFC scan. After Direct Libre use, this resets the experimental session and provisions fresh credentials for the scanned sensor. The old sensor and a reachable Watch are not prerequisites. A cancelled/failed reset requires another scan before phone BLE resumes.
 
-All experiment controls and error messages stay on the Advanced Settings page. Recent activity shows five entries initially, with **Show more**, up to 80 retained entries. The Watch adds only the reading-age antenna; it has no experiment control page.
+Ownership controls and error messages stay on the Advanced Settings page. Recent activity shows five entries initially, with **Show more**, up to 80 retained entries. The Watch adds the reading-age antenna and reuses its existing double tap for connection recovery; it has no experiment control page.
+
+After a connection loss, the Watch immediately requests reconnection using the saved sensor reference, with scanning when that reference is unavailable. CoreBluetooth can keep a known sensor's connection request pending while it is out of range. A scan-discovered connection has the phone's five-second connection timeout, cancelled as soon as Bluetooth connects. There is no timer that disconnects a connected sensor simply because its first glucose reading has not arrived.
+
+In Direct Watch mode, double tap the large glucose number or the chart page header to retry an idle connection or restart a connected session with no fresh reading for three minutes. Before the first reading, that grace period starts when Bluetooth connects. Repeated taps leave an active scan, connection attempt or fresh connection alone. Outside Direct Watch mode, double tapping still requests the original iPhone update. Water Lock must be off to use the screen gesture.
 
 New direct measurements are saved on Watch and acknowledged by the phone only after import into its original sensor's database record. Readings remain queued while delivery fails. Units survive Watch app restarts. Internal glucose values remain in mg/dL; display uses the phone's last explicit preference.
 

@@ -31,10 +31,12 @@ final class Libre2WatchManager {
     }
 
     var isDirect: Bool { handoff.isDirect }
-    var isReceiving: Bool { handoff.isReceiving }
+    var isConnected: Bool { handoff.isConnected }
     var indicatorText: String { handoff.indicatorText }
 
     func restore() { handoff.restore() }
+
+    func retryConnection() { handoff.retryConnection() }
 
     func connectionActivated() { historySync.resume() }
 

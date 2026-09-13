@@ -3,6 +3,15 @@ import Foundation
 /// Maps the add-on's display interface to xDrip's existing Watch model.
 /// History merging, validation and trend calculation live in Libre2WatchManager / Libre2ReadingPipeline.
 extension WatchStateModel: Libre2WatchDisplay {
+    /// Manual refresh only. Automatic phone refreshes retain the host's original behaviour.
+    func refreshAfterDoubleTap() {
+        if directLibre.isDirect {
+            directLibre.retryConnection()
+        } else {
+            requestWatchStateUpdate()
+        }
+    }
+
     /// Restore before the collector can publish a reading or overwrite the complication cache.
     func restoreDirectLibreUnits() {
         let defaults = UserDefaults(suiteName: Bundle.main.appGroupSuiteName)

@@ -2,7 +2,7 @@
 
 Scope: all committed changes from master baseline `53b3d6bf1b550c99b19c3d5d2c2f80dd226465d8`, including the subsequent refactor. The pre-refactor prototype at `226374a` contained 64 changed files, 6,999 additions and 27 deletions. This is a comparison to that precise baseline, not to an unverified newer master.
 
-The refactor reduces add-on production Swift from 4,506 to 3,968 lines. The resulting proposed diff against the same master baseline contains 64 changed files, 6,241 additions and 28 deletions (personal signing changes excluded). File count alone does not measure scope: the role-based split adds small model files while removing obsolete controllers and documents.
+At commit `32ef093`, the refactor reduced add-on production Swift from 4,506 to 3,968 lines. That commit's diff against the same master baseline contains 64 changed files, 6,241 additions and 28 deletions (personal signing changes excluded). These are historical refactor totals, before the subsequent Watch reconnect change. File count alone does not measure scope: the role-based split adds small model files while removing obsolete controllers and documents.
 
 ## Findings addressed
 
@@ -21,7 +21,7 @@ The reported forgotten popup cannot be identified with certainty. Master already
 
 ## Every change outside the add-on
 
-Paths are relative to the repository root. These are the nine existing Swift integration points and all other original-file differences from the baseline.
+Paths are relative to the repository root. These are the existing Swift integration points and all other original-file differences from the baseline, including the subsequent manual reconnect hooks.
 
 | Original file | Retained purpose / ordinary behaviour |
 | --- | --- |
@@ -32,7 +32,8 @@ Paths are relative to the repository root. These are the nine existing Swift int
 | `xDrip/Managers/Application/RootApplicationCoordinator.swift` | One observer and handler refresh existing displays after durable Watch imports. It does not trigger new-reading alarms. |
 | `xDrip/SwiftUIViews/Settings/Models/SettingsViewDevelopmentSettingsViewModel.swift` | One Advanced Settings entry. No version/header entry, scan-time sheet or global experiment dialog. |
 | `xDrip Watch App/DataModels/WatchStateModel.swift` | One Watch manager, message/restore forwarding, direct-mode relay guards, and unit restoration. Exposes the existing complication refresh to the adapter. Ordinary reading relay and display timer remain. |
-| `xDrip Watch App/Views/BigNumberView/BigNumberView.swift` | Replaces the age marker with a view that returns the original marker outside direct mode. |
+| `xDrip Watch App/Views/BigNumberView/BigNumberView.swift` | Replaces the age marker with a view that returns the original marker outside direct mode. Routes the existing double tap through the add-on; ordinary phone refresh is preserved. |
+| `xDrip Watch App/Views/MainView/MainView.swift` | Routes only the existing header double tap through the same add-on helper. The display timer, appearance refresh and chart behaviour remain unchanged. |
 | `xDrip Watch App/Views/MainView/SubViews/MainViewInfoView.swift` | Same age-marker integration for chart/AGP pages. |
 | `xDrip-Watch-App-Info.plist` | Bluetooth usage/background declaration and the explicitly retained underwater frontmost declaration. No Motion usage key. |
 | `xdrip.xcodeproj/project.pbxproj` | Add-on file groups and target memberships; previous build-path corrections. Tests do not ship in app targets. Personal signing configuration is kept local. |
