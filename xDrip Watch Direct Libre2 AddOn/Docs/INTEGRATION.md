@@ -20,7 +20,7 @@ The comparison base is upstream master commit `53b3d6bf1b550c99b19c3d5d2c2f80dd2
 | `Shared/DataModels/Libre2Ownership.swift`, `Libre2WatchSession.swift`, `Libre2HandoffMessage.swift` | Persisted state and wire format. |
 | `Shared/Protocol/Libre2Core.swift`, `Libre2Crypto.swift` | Watch BLE protocol port. The original iPhone NFC, crypto and parser remain in place. Source attribution is retained. |
 | `Shared/Managers/Libre2ReadingPipeline.swift` | Direct display history merge, trend and validation. |
-| `Shared/Managers/Libre2WatchPreferences.swift` | Last explicit unit preference, complication-cache migration and background-location opt-in. |
+| `Shared/Managers/Libre2WatchPreferences.swift` | Last explicit units and glucose limits, complication-cache migration and background-location opt-in. |
 | `iPhone/Managers/Libre2PhoneHistorySync.swift`, `Libre2PhoneReadingProcessing.swift` | Durable imports, stored slopes and the adapter to the host’s shared downstream workflow. |
 | `Shared/Managers/Libre2ActivityLog.swift` | Bounded diagnostics, dormant outside experiment/page use. |
 
@@ -112,3 +112,10 @@ The starting configuration is standard updates, 100-metre desired accuracy, no d
 Outside the add-on, only the Watch’s `location` background mode/When In Use usage description and Xcode source membership are required. No new host lifecycle hook, NFC edit, HealthKit session, entitlement or display timer was added. To remove this experiment, remove the helper/property/message dispatch, location settings view/row, request type/preference/strings and those plist/membership entries.
 
 This implementation has no fixed one-hour timer. It also makes no guarantee of sustained execution, GPS availability, glucose delivery or crash relaunch. Location services can consume additional battery. Device testing must establish stationary/background delivery and reconnect behavior before treating it as continuous monitoring. [Apple background-location guidance](https://developer.apple.com/documentation/corelocation/handling-location-updates-in-the-background).
+
+
+## Watch display settings after restart
+
+The existing Watch initialization and status hooks call `restoreDirectLibrePreferences` and `receiveDirectLibrePreferences`. The add-on persists all four explicit phone glucose limits in mg/dL alongside the existing unit preference. A valid saved set takes precedence over the complication cache; existing installations can migrate cached settings. Restore occurs before collector startup, so a first direct reading cannot overwrite the complication with startup defaults.
+
+Fresh, complete phone limits can update during direct collection without importing phone sensor status or glucose. A limits-only change returns through the host's existing complication refresh path. Duplicate settings do not request an extra refresh; malformed/partial or expired payloads do not overwrite saved limits. Ordinary relay retains its original status assignments. No new message, timer, background-session hook or Watch alarm is added.

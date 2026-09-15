@@ -66,6 +66,7 @@ final class PhoneWatchManager {
 """ + method("xDrip/Managers/Watch/WatchManager.swift", "private func currentBgReadings()") + "\n}\n"
 code += """
 struct Libre2WatchPreferences {
+    func receiveLimits(_ dictionary: [String: Any]) -> Int? { nil }
     func receiveUnits(_ dictionary: [String: Any]) -> Bool? { dictionary["isMgDl"] as? Bool }
 }
 final class DirectMode { var isDirect = true }
@@ -74,8 +75,9 @@ final class WatchStateModel {
     var isMgDl = true
     var deltaValueInUserUnit = 0.0
     var libreReadingHistory: [Libre2Sample] = []
+    func applyDirectLibreLimits(_ limits: Int) -> Bool { preconditionFailure("Unit-only test unexpectedly received limits") }
 """ + method(str(addon.relative_to(repo) / "Watch/DataModels/WatchStateModel+DirectLibre.swift"),
-             "func receiveDirectLibreUnits") + "\n}\n"
+             "func receiveDirectLibrePreferences") + "\n}\n"
 code += """
 let now = Date(timeIntervalSince1970: 1_800_000_000)
 let phone = PhoneWatchManager()
@@ -114,12 +116,12 @@ watch.libreReadingHistory = [Libre2Sample(timeStamp: now, glucoseLevelRaw: 109),
                             Libre2Sample(timeStamp: now.addingTimeInterval(-60), glucoseLevelRaw: 100)]
 watch.deltaValueInUserUnit = 9
 for units in [false, true, false, true] {
-    precondition(watch.receiveDirectLibreUnits(["isMgDl": units]))
+    precondition(watch.receiveDirectLibrePreferences(["isMgDl": units]))
     precondition(abs(watch.deltaValueInUserUnit - (units ? 9 : 0.4)) < 0.0000001)
 }
 watch.directLibre.isDirect = false
 watch.deltaValueInUserUnit = 17
-precondition(watch.receiveDirectLibreUnits(["isMgDl": false]))
+precondition(watch.receiveDirectLibrePreferences(["isMgDl": false]))
 precondition(watch.deltaValueInUserUnit == 17, "Ordinary relay delta was changed")
 print("\\(cases) phone/Watch trend comparisons passed; repeated unit changes and ordinary relay guard passed.")
 """

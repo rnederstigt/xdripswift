@@ -13,20 +13,46 @@ extension WatchStateModel: Libre2WatchDisplay {
     }
 
     /// Restore before the collector can publish a reading or overwrite the complication cache.
-    func restoreDirectLibreUnits() {
+    func restoreDirectLibrePreferences() {
         let defaults = UserDefaults(suiteName: Bundle.main.appGroupSuiteName)
         let data = defaults?.data(forKey: "complicationSharedUserDefaults.\(Bundle.main.mainAppBundleIdentifier)")
         let cached = data.flatMap { try? JSONDecoder().decode(ComplicationSharedUserDefaultsModel.self, from: $0) }
-        isMgDl = Libre2WatchPreferences().restoreUnits(cachedUnit: cached?.isMgDl)
+        let preferences = Libre2WatchPreferences()
+        isMgDl = preferences.restoreUnits(cachedUnit: cached?.isMgDl)
+        let cachedLimits = cached.map {
+            Libre2WatchPreferences.GlucoseLimits(urgentLow: $0.urgentLowLimitInMgDl, low: $0.lowLimitInMgDl,
+                                                high: $0.highLimitInMgDl, urgentHigh: $0.urgentHighLimitInMgDl)
+        }
+        if let limits = preferences.restoreLimits(cachedLimits: cachedLimits) {
+            _ = applyDirectLibreLimits(limits)
+        }
     }
 
-    /// Units may follow the phone during direct collection; sensor status and readings may not.
-    func receiveDirectLibreUnits(_ dictionary: [String: Any]) -> Bool {
-        guard let units = Libre2WatchPreferences().receiveUnits(dictionary), units != isMgDl else { return false }
-        if directLibre.isDirect {
-            deltaValueInUserUnit = Libre2ReadingPipeline.trend(from: libreReadingHistory, isMgDl: units).delta
+    /// Display settings may follow the phone during direct collection; sensor status and readings may not.
+    func receiveDirectLibrePreferences(_ dictionary: [String: Any]) -> Bool {
+        let preferences = Libre2WatchPreferences()
+        var changed = false
+        if let units = preferences.receiveUnits(dictionary), units != isMgDl {
+            if directLibre.isDirect {
+                deltaValueInUserUnit = Libre2ReadingPipeline.trend(from: libreReadingHistory, isMgDl: units).delta
+            }
+            isMgDl = units
+            changed = true
         }
-        isMgDl = units
+        // Persist in either mode; ordinary relay retains its original status assignments.
+        if let limits = preferences.receiveLimits(dictionary), directLibre.isDirect {
+            changed = applyDirectLibreLimits(limits) || changed
+        }
+        return changed
+    }
+
+    private func applyDirectLibreLimits(_ limits: Libre2WatchPreferences.GlucoseLimits) -> Bool {
+        guard urgentLowLimitInMgDl != limits.urgentLow || lowLimitInMgDl != limits.low ||
+            highLimitInMgDl != limits.high || urgentHighLimitInMgDl != limits.urgentHigh else { return false }
+        urgentLowLimitInMgDl = limits.urgentLow
+        lowLimitInMgDl = limits.low
+        highLimitInMgDl = limits.high
+        urgentHighLimitInMgDl = limits.urgentHigh
         return true
     }
 

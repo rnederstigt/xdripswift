@@ -133,3 +133,13 @@ Device acceptance:
 5. Compare ordinary phone readings and calibration prompts before/after. NFC and the Direct Libre login checklist must retain their existing behavior.
 
 Validation: 90 host tests, 96 phone parity cases, four import-routing cases and four delayed-sharing checks passed. The iPhone SDK source check passed for 29 primary sources, including the helper, coordinator and hosted database tests (compiled, not executed). The full unsigned build failed at widget asset compilation because the local simulator runtime service was unavailable. Device integration tests remain outstanding. Logs are in the workspace's `validation/shared-downstream` folder; temporary products are removed after validation.
+
+
+## Watch glucose-limit persistence
+
+Run `python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_preferences.py"` from the repository root. This executes the production preferences adapter with isolated defaults and a complication spy. It covers limits-only updates, duplicate suppression, independent units/trend handling, restart before the first direct complication update, cache migration, stale status and preservation of relay assignments. The host suite also covers persistence of all four limits and rejection of partial, nonfinite, nonpositive or expired settings. `check_phone_alignment.py` retains its unit/delta regression checks with the renamed hook.
+
+After installing, open both apps so the Watch receives current phone limits. In Direct Watch mode, change a limit on the phone without changing units and confirm the chart/complication updates. Restart Watch xDrip with the phone unreachable and confirm all four limits survive through the first new direct reading. Repeat in ordinary relay mode and with both display units. If the previous version already overwrote the complication cache, the phone must send its settings once before offline restoration can recover them. Location enablement and sensor ownership must remain unchanged.
+
+
+September 15 limits validation: 94 host tests, four Watch preference-adapter checks, 476 phone/Watch trend comparisons and the ordinary relay comparison passed. Watch device-SDK source checks passed for the add-on and the host Watch model; the latter included Xcode-generated asset declarations. The full unsigned Watch build remains blocked by unavailable watchsimulator runtimes during asset compilation. Hardware verification remains necessary. Logs are retained outside the repository in `validation/watch-display-limits`; temporary build products are removed after validation.

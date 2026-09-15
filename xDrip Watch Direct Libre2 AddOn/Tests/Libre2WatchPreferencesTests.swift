@@ -78,4 +78,63 @@ final class Libre2WatchPreferencesTests: XCTestCase {
             XCTAssertFalse(preferences.restoreUnits())
         }
     }
+
+    private var limits: Libre2WatchPreferences.GlucoseLimits {
+        .init(urgentLow: 65, low: 75, high: 190, urgentHigh: 240)
+    }
+
+    private var limitsStatus: [String: Any] {
+        ["generatedAt": now.timeIntervalSince1970, "urgentLowLimitInMgDl": limits.urgentLow,
+         "lowLimitInMgDl": limits.low, "highLimitInMgDl": limits.high, "urgentHighLimitInMgDl": limits.urgentHigh]
+    }
+
+    func testAllLimitsSurviveRestartWithoutDependingOnUnitsOrLocation() throws {
+        let preferences = Libre2WatchPreferences(defaults: defaults)
+        XCTAssertNil(preferences.restoreLimits())
+        _ = preferences.restoreUnits(cachedUnit: false)
+        preferences.backgroundLocationEnabled = true
+        XCTAssertEqual(preferences.receiveLimits(limitsStatus, now: now), limits)
+        let restored = Libre2WatchPreferences(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
+        XCTAssertEqual(restored.restoreLimits(), limits)
+        XCTAssertFalse(restored.restoreUnits())
+        XCTAssertTrue(restored.backgroundLocationEnabled)
+        _ = restored.receiveUnits(["generatedAt": now.timeIntervalSince1970, "isMgDl": true], now: now)
+        XCTAssertEqual(restored.restoreLimits(), limits)
+    }
+
+    func testCachedLimitsMigrateUntilExplicitPhoneLimitsAreReceived() {
+        let preferences = Libre2WatchPreferences(defaults: defaults)
+        let cached = Libre2WatchPreferences.GlucoseLimits(urgentLow: 60, low: 80, high: 170, urgentHigh: 250)
+        XCTAssertEqual(preferences.restoreLimits(cachedLimits: cached), cached)
+        XCTAssertEqual(preferences.receiveLimits(limitsStatus, now: now), limits)
+        XCTAssertEqual(Libre2WatchPreferences(defaults: defaults).restoreLimits(cachedLimits: cached), limits)
+    }
+
+    func testPartialInvalidOrStaleLimitsCannotOverwriteSavedLimits() {
+        let preferences = Libre2WatchPreferences(defaults: defaults)
+        _ = preferences.receiveLimits(limitsStatus, now: now)
+        for key in ["urgentLowLimitInMgDl", "lowLimitInMgDl", "highLimitInMgDl", "urgentHighLimitInMgDl"] {
+            for value: Any? in [nil, "75", Double.nan, Double.infinity, -1.0, 0.0] {
+                var malformed = limitsStatus
+                malformed[key] = value
+                XCTAssertNil(preferences.receiveLimits(malformed, now: now))
+                XCTAssertEqual(preferences.restoreLimits(), limits)
+            }
+        }
+        for date: Any? in [nil, "now", Double.nan, now.addingTimeInterval(-3600).timeIntervalSince1970] {
+            var stale = limitsStatus
+            stale["generatedAt"] = date
+            XCTAssertNil(preferences.receiveLimits(stale, now: now))
+            XCTAssertEqual(preferences.restoreLimits(), limits)
+        }
+    }
+
+    func testInvalidCacheDoesNotReplaceStartupDefaultsOrPreventLaterSync() {
+        let preferences = Libre2WatchPreferences(defaults: defaults)
+        let invalid = Libre2WatchPreferences.GlucoseLimits(urgentLow: .nan, low: 0, high: 170, urgentHigh: 250)
+        XCTAssertNil(preferences.restoreLimits(cachedLimits: invalid))
+        XCTAssertEqual(preferences.receiveLimits(limitsStatus, now: now), limits)
+        XCTAssertEqual(preferences.restoreLimits(), limits)
+    }
+
 }
