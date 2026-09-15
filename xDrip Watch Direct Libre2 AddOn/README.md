@@ -17,15 +17,23 @@ After a connection loss, the Watch immediately requests reconnection using the s
 
 In Direct Watch mode, double tap the large glucose number or the chart page header to retry an idle connection or restart a connected session with no fresh reading for three minutes. Before the first reading, that grace period starts when Bluetooth connects. Repeated taps leave an active scan, connection attempt or fresh connection alone. Outside Direct Watch mode, double tapping still requests the original iPhone update. Water Lock must be off to use the screen gesture.
 
-New direct measurements are saved on Watch and acknowledged by the phone only after import into its original sensor's database record. Readings remain queued while delivery fails. Units survive Watch app restarts. Internal glucose values remain in mg/dL; display uses the phone's last explicit preference.
+New direct measurements are saved on Watch and acknowledged by the phone only after import into the original sensor's database record. Readings remain queued while delivery fails. Imported values receive stored trends and use the phone's existing optional post-processing and downstream managers. Fresh values refresh phone alerts/missed-reading scheduling, speech, configured displays and sharing; historical batches do not trigger those current-reading effects. Nightscout, HealthKit and Dexcom Share retain their own settings, cadence and upload cursors, including existing limits on older backfill. The phone must receive fresh readings; an unreachable Watch does not suppress phone missed-reading alarms. Units survive Watch restarts; stored glucose remains in mg/dL and display uses the phone's last explicit preference.
 
 Readings for deleted or unrecognised phone sensors are retained separately on Watch so they cannot block other uploads. They are not automatically reassigned or retried. Update both companion apps for this recovery behaviour. If the phone-login checklist stays unchecked, use Stop Scanning/Disconnect and Connect with NFC on the ordinary sensor page, then wait for fresh glucose; the experimental page has no separate verification button.
 
 To remove these retained readings, open both apps and tap **Delete unresolved readings** on the experimental phone page. It checks the Watch's count on demand; confirm **Delete** or choose **Cancel**. Only unresolved readings are removed. Pending uploads, iPhone history and the sensor connection are preserved. The Watch must be reachable, and both apps need this update. If the readings change or the Watch restarts before deletion, check the count again. No automatic expiry or background deletion is added.
 
+## Optional background location
+
+On the experimental phone page, enable **Background collection using location — Experimental** with both apps open. The setting is saved on the Watch and defaults to off. Once the Watch owns the sensor, open xDrip there and grant location permission. If you enable it during an existing direct connection, permission can be requested immediately while Watch xDrip is active.
+
+Location updates then continue when leaving the app, subject to watchOS scheduling. Coordinates are not saved or shared. Temporary BLE disconnections do not stop location, so the existing collector can reconnect. Disabling the option or returning ownership stops location; the saved preference remains available for the next handoff. A new session after a background launch waits until xDrip is opened.
+
+The phone reads the setting/status when this page opens or the Watch becomes reachable while the page is visible; it does not poll. To refresh the reported status after granting permission, reopen the page. Both apps must be reachable to change or confirm the setting. This uses extra battery, requires device testing and does not guarantee continuous glucose delivery. See [location tests](Docs/TESTING.md#background-location-device-acceptance).
+
 ## Scope
 
-This is an on-demand/foreground prototype. It adds no workout, continuous monitoring guarantee, Watch alarms, sensor backfill or automatic Water Lock. The Watch retains the agreed `underwater-depth` declaration for Apple's documented 30-minute frontmost preparation period. Enable/disable Water Lock manually; longer operation and reception through water require device testing.
+By default this is an on-demand/foreground prototype, with optional experimental background-location support. It adds no workout, continuous monitoring guarantee, Watch alarms, sensor backfill or automatic Water Lock. The Watch retains the agreed `underwater-depth` declaration for Apple's documented 30-minute frontmost preparation period. Enable/disable Water Lock manually; longer operation and reception through water require device testing.
 
 Ordinary NFC reset after Direct Libre use reprovisions streaming credentials and may disrupt another app's sensor connection. Phone control does not mean instantaneous disconnection of an unreachable Watch. See the integration guide for the distinction between software ownership and sensor provisioning.
 

@@ -9,6 +9,27 @@ import XCTest
 final class Libre2PhoneHistorySyncTests: XCTestCase {
     private let uid = Data([1, 2, 3, 4, 5, 6, 7, 8])
 
+    private final class ImportEvents: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [Date?] = []
+        var dates: [Date?] {
+            lock.lock()
+            defer { lock.unlock() }
+            return values
+        }
+        func append(_ date: Date?) {
+            lock.lock()
+            defer { lock.unlock() }
+            values.append(date)
+        }
+    }
+
+    private func observe(_ sync: Libre2PhoneHistorySync, events: ImportEvents) -> NSObjectProtocol {
+        NotificationCenter.default.addObserver(forName: Libre2PhoneHistorySync.didImport, object: sync, queue: .main) {
+            events.append($0.userInfo?[Libre2PhoneHistoryUpdate.currentReadingDateKey] as? Date)
+        }
+    }
+
     private func fixture() async throws -> (CoreDataManager, Sensor, Libre2HistoryRegistry, Libre2HistoryReading) {
         let manager = CoreDataManager(inMemoryModelName: ConstantsCoreData.modelName)
         let sensor = Sensor(startDate: Date().addingTimeInterval(-3600), nsManagedObjectContext: manager.mainManagedObjectContext)
@@ -37,6 +58,8 @@ final class Libre2PhoneHistorySyncTests: XCTestCase {
         let sensorID: String?
         let backfilledAt: Date?
         let calibrationID: NSManagedObjectID?
+        let slope: Double
+        let hideSlope: Bool
     }
 
     private func diskReadings(_ manager: CoreDataManager) throws -> [SavedReading] {
@@ -44,7 +67,8 @@ final class Libre2PhoneHistorySyncTests: XCTestCase {
         context.persistentStoreCoordinator = manager.privateManagedObjectContext.persistentStoreCoordinator
         return try context.fetch(BgReading.fetchRequest()).map {
             SavedReading(id: $0.id, calculatedValue: $0.calculatedValue, sensorID: $0.sensor?.id,
-                         backfilledAt: $0.backfilledAt, calibrationID: $0.calibration?.objectID)
+                         backfilledAt: $0.backfilledAt, calibrationID: $0.calibration?.objectID,
+                         slope: $0.calculatedValueSlope, hideSlope: $0.hideSlope)
         }
     }
 
@@ -167,5 +191,153 @@ final class Libre2PhoneHistorySyncTests: XCTestCase {
         XCTAssertNotNil(readings.first(where: { $0.id == second.id }))
         XCTAssertNotNil(readings.first(where: { $0.id == third.id }))
     }
+
+    func testCurrentImportPublishesOnceAfterSaveAndDoesNotMarkImmediateDeliveryAsBackfill() async throws {
+        let wasMaster = UserDefaults.standard.isMaster
+        UserDefaults.standard.isMaster = true
+        defer { UserDefaults.standard.isMaster = wasMaster }
+        let (manager, _, registry, old) = try await fixture()
+        let sample = Libre2HistoryReading(sessionID: old.sessionID, sensorUID: uid, sensorMinute: 110,
+                                          date: Date().addingTimeInterval(-5), glucose: 125)
+        let sync = Libre2PhoneHistorySync(coreDataManager: manager, session: .default, registry: registry)
+        let events = ImportEvents()
+        let observer = observe(sync, events: events)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        let batch = Libre2HistoryBatch(readings: [old, sample])
+        _ = try await send(batch, to: sync)
+        XCTAssertEqual(events.dates.count, 1)
+        XCTAssertEqual(events.dates[0], sample.date)
+        let saved = try diskReadings(manager)
+        XCTAssertNotNil(saved.first(where: { $0.id == old.id })?.backfilledAt)
+        XCTAssertNil(saved.first(where: { $0.id == sample.id })?.backfilledAt)
+        _ = try await send(batch, to: sync)
+        XCTAssertEqual(events.dates.count, 2)
+        XCTAssertNil(events.dates[1])
+    }
+
+    func testSaveFailureCannotAnnounceCurrentReadingAndRetryCan() async throws {
+        let wasMaster = UserDefaults.standard.isMaster
+        UserDefaults.standard.isMaster = true
+        defer { UserDefaults.standard.isMaster = wasMaster }
+        let (manager, _, registry, old) = try await fixture()
+        let sample = Libre2HistoryReading(sessionID: old.sessionID, sensorUID: uid, sensorMinute: 110,
+                                          date: Date().addingTimeInterval(-10), glucose: 125)
+        let sync = Libre2PhoneHistorySync(coreDataManager: manager, session: .default, registry: registry,
+            beforeStoreSave: { throw Libre2HistoryError.unavailable })
+        let events = ImportEvents()
+        let observer = observe(sync, events: events)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        let batch = Libre2HistoryBatch(readings: [sample])
+        let failed = try await send(batch, to: sync)
+        XCTAssertNotNil(failed["error"])
+        XCTAssertTrue(events.dates.isEmpty)
+        let retry = Libre2PhoneHistorySync(coreDataManager: manager, session: .default, registry: registry)
+        let retryObserver = observe(retry, events: events)
+        defer { NotificationCenter.default.removeObserver(retryObserver) }
+        _ = try await send(batch, to: retry)
+        XCTAssertEqual(events.dates.count, 1)
+        XCTAssertEqual(events.dates[0], sample.date)
+    }
+
+    func testStaleEndedSensorAndSupersededReadingsOnlyRefreshHistory() async throws {
+        let wasMaster = UserDefaults.standard.isMaster
+        UserDefaults.standard.isMaster = true
+        defer { UserDefaults.standard.isMaster = wasMaster }
+        let (manager, sensor, registry, old) = try await fixture()
+        let sync = Libre2PhoneHistorySync(coreDataManager: manager, session: .default, registry: registry)
+        let events = ImportEvents()
+        let observer = observe(sync, events: events)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        _ = try await send(Libre2HistoryBatch(readings: [old]), to: sync)
+
+        let phone = BgReading(timeStamp: Date(), sensor: sensor, calibration: nil, rawData: 130,
+                              deviceName: "Libre 2", nsManagedObjectContext: manager.mainManagedObjectContext)
+        phone.calculatedValue = 130
+        let superseded = Libre2HistoryReading(sessionID: old.sessionID, sensorUID: uid, sensorMinute: 109,
+                                              date: Date().addingTimeInterval(-60), glucose: 125)
+        _ = try await send(Libre2HistoryBatch(readings: [superseded]), to: sync)
+        manager.mainManagedObjectContext.delete(phone)
+        sensor.endDate = Date()
+        let ended = Libre2HistoryReading(sessionID: old.sessionID, sensorUID: uid, sensorMinute: 110,
+                                         date: Date().addingTimeInterval(-5), glucose: 126)
+        _ = try await send(Libre2HistoryBatch(readings: [ended]), to: sync)
+        XCTAssertEqual(events.dates.count, 3)
+        XCTAssertTrue(events.dates.allSatisfy { $0 == nil })
+    }
+
+    func testUnsortedImportStoresSlopesAndRepairsExistingPhoneSuccessor() async throws {
+        let (manager, sensor, registry, first) = try await fixture()
+        let second = Libre2HistoryReading(sessionID: first.sessionID, sensorUID: uid, sensorMinute: 101,
+            date: first.date.addingTimeInterval(60), glucose: 125)
+        let phone = BgReading(timeStamp: first.date.addingTimeInterval(120), sensor: sensor, calibration: nil,
+            rawData: 130, deviceName: "Libre 2", nsManagedObjectContext: manager.mainManagedObjectContext)
+        phone.calculatedValue = 130
+        phone.hideSlope = true
+        try manager.mainManagedObjectContext.save()
+        let sync = Libre2PhoneHistorySync(coreDataManager: manager, session: .default, registry: registry)
+        let batch = Libre2HistoryBatch(readings: [second, first])
+        for _ in 0..<2 {
+            _ = try await send(batch, to: sync)
+            let saved = try diskReadings(manager)
+            XCTAssertEqual(saved.count, 3)
+            XCTAssertTrue(try XCTUnwrap(saved.first { $0.id == first.id }).hideSlope)
+            let middle = try XCTUnwrap(saved.first { $0.id == second.id })
+            XCTAssertFalse(middle.hideSlope)
+            XCTAssertEqual(middle.slope, (125 - 650) / 60_000.0, accuracy: 0.00000001)
+            let successor = try XCTUnwrap(saved.first { $0.id == phone.id })
+            XCTAssertFalse(successor.hideSlope)
+            XCTAssertEqual(successor.slope, 5 / 60_000.0, accuracy: 0.00000001)
+        }
+    }
+
+    func testSlopeCalculationRespectsSensorIdentityGapsAndSuppressedReadings() async throws {
+        let (manager, sensor, _, sample) = try await fixture()
+        let context = manager.mainManagedObjectContext
+        let other = Sensor(startDate: sample.date, nsManagedObjectContext: context)
+        func row(_ seconds: Double, _ value: Double, _ owner: Sensor) -> BgReading {
+            let reading = BgReading(timeStamp: sample.date.addingTimeInterval(seconds), sensor: owner,
+                calibration: nil, rawData: value, deviceName: "Libre 2", nsManagedObjectContext: context)
+            reading.calculatedValue = value
+            return reading
+        }
+        _ = row(0, 100, sensor)
+        let suppressed = row(30, 250, sensor)
+        suppressed.isSuppressedByFiveMinuteCadence = true
+        _ = row(50, 300, other)
+        let visible = row(60, 106, sensor)
+        let gap = row(60 + 22 * 60, 120, sensor)
+        _ = try Libre2PhoneReadingProcessing.updateSlopes(sensorIDs: [sensor.id], from: sample.date,
+            to: gap.timeStamp, context: context)
+        XCTAssertEqual(visible.calculatedValueSlope, 6 / 60_000.0, accuracy: 0.00000001)
+        XCTAssertFalse(visible.hideSlope)
+        XCTAssertEqual(gap.calculatedValueSlope, 0)
+        XCTAssertTrue(gap.hideSlope)
+        XCTAssertTrue(try Libre2PhoneReadingProcessing.updateSlopes(sensorIDs: [sensor.id], from: sample.date,
+            to: gap.timeStamp, context: context).isEmpty)
+    }
+
+    func testCurrentReadingRecheckRejectsSuppressedSupersededFutureAndEndedSensorValues() async throws {
+        let wasMaster = UserDefaults.standard.isMaster
+        UserDefaults.standard.isMaster = true
+        defer { UserDefaults.standard.isMaster = wasMaster }
+        let (manager, sensor, _, _) = try await fixture()
+        let now = Date()
+        let reading = BgReading(timeStamp: now.addingTimeInterval(-10), sensor: sensor, calibration: nil,
+            rawData: 120, deviceName: "Libre 2 Watch", nsManagedObjectContext: manager.mainManagedObjectContext)
+        reading.calculatedValue = 120
+        XCTAssertTrue(Libre2PhoneReadingProcessing.isCurrentReading(reading.timeStamp, coreDataManager: manager, now: now))
+        reading.isSuppressedByFiveMinuteCadence = true
+        XCTAssertFalse(Libre2PhoneReadingProcessing.isCurrentReading(reading.timeStamp, coreDataManager: manager, now: now))
+        reading.isSuppressedByFiveMinuteCadence = false
+        XCTAssertFalse(Libre2PhoneReadingProcessing.isCurrentReading(now.addingTimeInterval(-60), coreDataManager: manager, now: now))
+        XCTAssertFalse(Libre2PhoneReadingProcessing.isCurrentReading(reading.timeStamp, coreDataManager: manager,
+            now: now.addingTimeInterval(600)))
+        reading.timeStamp = now.addingTimeInterval(60)
+        XCTAssertFalse(Libre2PhoneReadingProcessing.isCurrentReading(reading.timeStamp, coreDataManager: manager, now: now))
+        reading.timeStamp = now.addingTimeInterval(-10)
+        sensor.endDate = now
+        XCTAssertFalse(Libre2PhoneReadingProcessing.isCurrentReading(reading.timeStamp, coreDataManager: manager, now: now))
+    }
+
 }
 #endif

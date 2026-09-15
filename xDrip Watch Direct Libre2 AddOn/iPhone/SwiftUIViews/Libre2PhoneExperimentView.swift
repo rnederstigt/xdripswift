@@ -39,6 +39,8 @@ struct Libre2PhoneExperimentView: View {
                 Divider()
                 Libre2ChecklistView(groups: handoff.checklistGroups)
                 Divider()
+                Libre2LocationSettingsView()
+                Divider()
                 historyCleanup
                 Divider()
                 Libre2ActivityLogView()

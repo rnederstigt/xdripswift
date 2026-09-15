@@ -23,6 +23,28 @@ final class Libre2WatchPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.restoreUnits())
     }
 
+    func testLocationIsOptInAndPersistsIndependentlyOfUnits() {
+        let preferences = Libre2WatchPreferences(defaults: defaults)
+        XCTAssertFalse(preferences.backgroundLocationEnabled)
+        _ = preferences.restoreUnits(cachedUnit: false)
+        preferences.backgroundLocationEnabled = true
+        let restored = Libre2WatchPreferences(defaults: defaults)
+        XCTAssertTrue(restored.backgroundLocationEnabled)
+        XCTAssertFalse(restored.restoreUnits())
+        restored.backgroundLocationEnabled = false
+        XCTAssertFalse(preferences.backgroundLocationEnabled)
+    }
+
+    func testLocationRequestsRoundTripAndRejectMalformedMessages() throws {
+        for request: Libre2LocationRequest in [.inspect, .setEnabled(true), .setEnabled(false)] {
+            XCTAssertEqual(try Libre2LocationRequest.decode(request.dictionary), request)
+        }
+        for dictionary: [String: Any] in [[:], [Libre2LocationRequest.key: true],
+                                          [Libre2LocationRequest.key: Data("{}".utf8)]] {
+            XCTAssertThrowsError(try Libre2LocationRequest.decode(dictionary))
+        }
+    }
+
     func testBothUnitChoicesSurviveRecreatingPreferences() throws {
         for units in [false, true, false] {
             let preferences = Libre2WatchPreferences(defaults: defaults)

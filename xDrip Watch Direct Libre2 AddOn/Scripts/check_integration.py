@@ -42,7 +42,7 @@ for area, target in (("iPhone", "xdrip"), ("Watch", "xDrip Watch App")):
     assert not expected & source_sets[other], f"{area} code included in the wrong target"
 
 shared = set((addon / "Shared").rglob("*.swift"))
-phone_only = {"Libre2Checklist.swift", "Libre2PhoneSwitchAction.swift", "Libre2PhoneReadingStatus.swift", "Libre2HistoryRegistry.swift"}
+phone_only = {"Libre2Checklist.swift", "Libre2PhoneSwitchAction.swift", "Libre2PhoneReadingStatus.swift", "Libre2PhoneHistoryUpdate.swift", "Libre2HistoryRegistry.swift"}
 watch_shared = {path for path in shared if path.name not in phone_only}
 assert watch_shared <= source_sets["xDrip Watch App"], "Watch is missing shared helpers"
 assert not {path for path in shared if path.name in phone_only} & source_sets["xDrip Watch App"], "Phone-only helpers must not ship on Watch"
@@ -55,9 +55,12 @@ with (repo / "xDrip-Watch-App-Info.plist").open("rb") as file:
     watch_info = plistlib.load(file)
 assert "underwater-depth" in watch_info.get("WKBackgroundModes", [])
 assert "bluetooth-central" in watch_info.get("UIBackgroundModes", [])
+assert "location" in watch_info.get("UIBackgroundModes", [])
+assert watch_info.get("NSLocationWhenInUseUsageDescription")
+assert "audio" not in watch_info.get("UIBackgroundModes", [])
 assert "NSMotionUsageDescription" not in watch_info
 with (repo / "xDrip Watch App/xDrip Watch App.entitlements").open("rb") as file:
     watch_entitlements = plistlib.load(file)
 assert "com.apple.developer.submerged-shallow-depth-and-pressure" not in watch_entitlements
 assert "com.apple.developer.submerged-depth-and-pressure" not in watch_entitlements
-print("Minimal Watch foreground configuration verified; no Motion usage or depth entitlement.")
+print("Watch Bluetooth, optional location and underwater declarations verified; no audio, Motion usage or depth entitlement.")

@@ -29,13 +29,13 @@ Paths are relative to the repository root. These are the existing Swift integrat
 | `xDrip/BluetoothTransmitter/CGM/Libre/Libre2/CGMLibre2Transmitter.swift` | One adapter, observations of actual BLE login/readings and connection state, counter reservation, and NFC reset hooks. Original glucose parser/algorithm and NFC callbacks remain. Buffer reset and altered NFC retry are confined to experimental use/reset. |
 | `xDrip/BluetoothTransmitter/CGM/Libre/Utilities/LibreNFC.swift` | Only an optional unlock-code argument, defaulting to the original 42. Reader commands, sensor checks and notices otherwise match master. No experimental type or expected-sensor restriction remains. |
 | `xDrip/Managers/Watch/WatchManager.swift` | Routes explicitly keyed handoff/history messages, supplies existing database/session and forwards companion-state events. Original relay/request behaviour remains. |
-| `xDrip/Managers/Application/RootApplicationCoordinator.swift` | One observer and handler refresh existing displays after durable Watch imports. It does not trigger new-reading alarms. |
+| `xDrip/Managers/Application/RootApplicationCoordinator.swift` | The existing observer routes durable Watch imports through the extracted downstream block also used by ordinary phone readings. The default phone call order is preserved; only newly current imports trigger live effects. |
 | `xDrip/SwiftUIViews/Settings/Models/SettingsViewDevelopmentSettingsViewModel.swift` | One Advanced Settings entry. No version/header entry, scan-time sheet or global experiment dialog. |
 | `xDrip Watch App/DataModels/WatchStateModel.swift` | One Watch manager, message/restore forwarding, direct-mode relay guards, and unit restoration. Exposes the existing complication refresh to the adapter. Ordinary reading relay and display timer remain. |
 | `xDrip Watch App/Views/BigNumberView/BigNumberView.swift` | Replaces the age marker with a view that returns the original marker outside direct mode. Routes the existing double tap through the add-on; ordinary phone refresh is preserved. |
 | `xDrip Watch App/Views/MainView/MainView.swift` | Routes only the existing header double tap through the same add-on helper. The display timer, appearance refresh and chart behaviour remain unchanged. |
 | `xDrip Watch App/Views/MainView/SubViews/MainViewInfoView.swift` | Same age-marker integration for chart/AGP pages. |
-| `xDrip-Watch-App-Info.plist` | Bluetooth usage/background declaration and the explicitly retained underwater frontmost declaration. No Motion usage key. |
+| `xDrip-Watch-App-Info.plist` | Bluetooth usage/background declaration, optional location background mode and When In Use description, and the explicitly retained underwater frontmost declaration. No Motion usage key. |
 | `xdrip.xcodeproj/project.pbxproj` | Add-on file groups and target memberships; previous build-path corrections. Tests do not ship in app targets. Personal signing configuration is kept local. |
 | `xdrip.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings` | Uses default DerivedData/build locations. |
 | `xdrip.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings` | Same workspace-level build-location correction. |
@@ -61,3 +61,22 @@ These exceptions prevent claiming absolute upstream equivalence. The agreed goal
 Counter persistence-before-write, monotonically advancing counters, sensor/session identity checks, phase checks on delayed replies, retired IDs, saved peripheral identity, confirmed disconnect barriers, native calibration validation, history acknowledgement after durable save, and database sensor matching each protect a concrete failure mode. They are not removed to reduce line count. Watch reconnect/return retries remain; checklist and history synchronization introduce no periodic polling timer.
 
 See [TESTING.md](TESTING.md) for automated evidence and remaining device/build limits, and [INTEGRATION.md](INTEGRATION.md) for the porting order and compatibility formats.
+
+## September 15: optional background location
+
+Adds one location helper and an interactive settings view within the add-on. `Libre2WatchManager` owns the helper and dispatches its messages through the existing WatchConnectivity entry point; the phone experimental page adds its settings row. Shared preferences retain the opt-in, independent of glucose units and sensor credentials. Only Watch plist capabilities/usage text and Xcode membership change outside the add-on. Existing local signing configuration is preserved.
+
+The helper remains dormant by default. It requests location only after explicit enablement, Watch sensor ownership and foreground activation. It never writes the ownership journal, changes sensor counters, scans Bluetooth or touches the ordinary NFC path. Location failure leaves the collector alone. Status changes use the bounded existing log; no timer or route history is added. Device background delivery and battery cost remain unverified.
+
+## September 15: current Watch readings on phone
+
+The import handler previously refreshed displays only, despite its comment mentioning uploads. This left the old phone missed-reading request scheduled and omitted the normal Nightscout glucose upload call. The existing handler now invokes the uploader after every durable import, and invokes the existing alert routine only for newly current Watch readings. Freshness and duplicate-notification bookkeeping live in the add-on; the alarm engine, Nightscout uploader, ordinary phone acquisition/NFC and Watch collector remain unchanged. The downstream block was subsequently extracted as described below. No new observer or background timer is needed.
+
+
+## Shared downstream processing — September 15
+
+The ordinary `processNewGlucoseData` acquisition/calibration/storage code is unchanged except for replacing its downstream block with a shared method call. The original downstream order and calibration behavior are retained by default. The existing import handler selects active-sensor processing and current-only effects, then calls the same method. A probe executes the pre-extraction block and current phone call against identical spies in 96 cases.
+
+`Libre2PhoneReadingProcessing` is the only new production file for this step, inside the add-on's iPhone Managers folder. It uses the existing slope calculation, rechecks current visibility after optional processing and adapts the delayed-sharing buffer to database-backed Watch imports. Import result metadata identifies changed sensors so unrelated history does not reprocess the active sensor. No changes were made to NFC, BLE ownership, exporter/alert implementations, database schema or Loop/Trio repositories. The Xcode change adds that file only to iPhone source membership; signing/build settings are preserved.
+
+Historical imports remain subject to existing exporter cursors and bounded post-processing. Tests validate routing and buffer preparation, not remote receipt or app-group consumption. The optional location work remains separate and unchanged by this step.

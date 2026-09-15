@@ -4,6 +4,8 @@ Run from the repository root:
 
 ```sh
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_integration.py"
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_phone_import_routing.py"
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_location.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_upstream_scanning.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_upstream_relay.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_reconnect.py"
@@ -81,3 +83,53 @@ Cleanup host tests cover request encoding, stale confirmations, restart, durable
 Record time/timezone, model/watchOS, app build/commit, foreground/workout state and phone reachability. Export the full Watch crash/termination report and related JetsamEvent from Xcode/paired-device logs. Keep the matching archive/dSYM. Confirm the Watch app was actually terminated before attributing memory-pressure reports to it. Correlate the termination reason with device console/connection history; automatic reconnect does not establish the cause.
 
 The local journal is connection diagnostics, not a crash reporter, and the phone's log does not contain all Watch events. No crash upload service or continuous runtime was added. [Apple crash diagnosis](https://developer.apple.com/documentation/xcode/diagnosing-issues-using-crash-reports-and-device-logs).
+
+## Background location device acceptance
+
+1. Install both updated targets. With the option off, verify no location prompt, normal NFC, relay, Direct Libre handoff and return.
+2. Open both apps, then on iPhone go to Advanced Settings → Direct Libre (Experimental). Enable **Background collection using location — Experimental**. The switch reflects the Watch’s acknowledged saved preference, not an optimistic phone setting. It is unavailable when Watch cannot be reached.
+3. Switch collection to Watch and open xDrip there. Grant When In Use location permission. If already in direct mode, enabling while the Watch app is active can request permission immediately. Reopen the phone page to read the latest reported location state. No coordinates should appear in the activity log.
+4. Compare 90–120 minute trials with the option off/on, without a debugger. Separate wrist-down/frontmost trials from leaving for the watch face. Include prolonged stationarity, movement, poor indoor positioning and intentional sensor range loss. Compare distinct sensor timestamps, persisted readings, missed intervals and autonomous reconnects, not just the green antenna.
+5. Disable while both apps are reachable and verify location stops while Direct BLE continues. Return to phone and verify location stops, ownership/counters retain their existing behavior and phone glucose resumes.
+6. Deny/revoke permission, then restore it and reopen Watch xDrip. Location failure must not reset the sensor or change ownership. Restart Watch xDrip with the preference enabled: a foreground reopen should restore location support; a background launch must wait for foreground. Reopening repeatedly and receiving new readings must not repeatedly start location or request permission.
+7. Change/reset the sensor with ordinary NFC. Confirm no new sensor dialog and normal phone behavior. When reachable, the old Watch’s revocation should stop location. An unreachable Watch cannot be stopped remotely; open both apps to deliver the existing revocation. This helper does not change that handoff constraint.
+8. Repeat matched battery trials and record exact model/watchOS, app revision, duration, screen use, movement and charge loss. Background collection and battery cost are unverified until these trials pass. No audio or HealthKit workout is started.
+
+The location probe executes the production helper using location/lifecycle doubles. It checks default-off behavior, every non-Watch ownership state, foreground-only start, one permission request, repeated callbacks, temporary no-fix errors, disable, return/reset, permission recovery and deferred restart. Host tests cover preference persistence independent of units, request encoding and malformed requests. These tests do not emulate watchOS scheduling or radio delivery.
+
+### September 15 validation results
+
+87 host tests, eight location lifecycle checks and 21 existing collector checks passed. Ordinary Watch relay and the NFC source-comparison assertions passed. The full historical scanning script still rejects the existing unresolved-history confirmation via its blanket `.alert(` ban; that alert predates this change and the script was left untouched.
+
+Device SDK source checks passed for 25 iPhone primary sources and 25 Watch primary sources, with the remaining target declarations available. Full unsigned builds remain blocked at existing asset compilation by unavailable simulator runtimes. No physical-device runtime or battery test has been performed. Temporary build products were removed after retaining logs in the workspace’s `validation/background-location` directory.
+
+## Current Watch readings on phone
+
+- With fresh Watch values appearing on the phone, confirm that its missed-reading notification is rescheduled from each measurement time. Normal alert enablement/snooze settings must still apply. If readings stop arriving, the missed-reading alert must still fire.
+- With Nightscout master upload enabled and its schedule active, verify incoming Watch readings appear at the configured ordinary upload cadence. Test after temporary loss of internet and after a batch retry. No HTTP upload was performed during local tests.
+- Reconnect after a long offline interval: old batches must update history without raising historical low/high notifications or clearing a valid missed-reading alert. A new current value can refresh alerts once received. Confirm future-dated, ended-sensor, superseded and duplicate batches cannot act as fresh data.
+- Test the host uploader’s cursor behavior separately: imports newer than its last uploaded timestamp are candidates; this fix does not rewrite data older than an already-advanced cursor or change the existing Nightscout upload frequency.
+- Verify ordinary phone BLE readings and NFC remain unchanged. The phone’s Direct Libre login checklist must not become verified solely from imported Watch glucose.
+
+Host tests cover measurement-time freshness, the exact age boundary, duplicate/older/future values and subsequent new readings. The routing probe executes the production root import handler with downstream spies, checking the original uploader, alert and display calls. Hosted database tests additionally check metadata after a durable save, retry after a failed save, age-based backfill marking, active-sensor matching and newer phone readings; device-SDK compilation is not execution of those hosted tests.
+
+### Current-reading validation results — September 15
+
+90 host tests, four production-handler routing checks and eight location regression checks passed. The iPhone device SDK source check passed for 28 primary sources, including the root handler and hosted Core Data tests; the hosted tests were compiled, not executed. The full unsigned scheme build remains blocked at existing asset compilation by unavailable simulator runtimes. Live Nightscout delivery and alarm scheduling still require device checks. Logs remain in `validation/watch-current-readings` outside the repository; temporary products were removed.
+
+
+## Shared downstream workflow
+
+`Scripts/check_phone_import_routing.py` executes the original pre-extraction phone block and current production call with downstream spies: 96 combinations cover calibration state, native/WebOOP paths, reading count and optional managers. It also executes the production import handler/shared method for current, historical, duplicate, ended-sensor and post-processing-suppressed readings. A second probe executes the delayed-sharing adapter and actual phone sharing-value policy with database/settings doubles, covering bounded chronological data, original timestamps/trends, smoothing preference, missing sensor, blocked sharing, recent calibration and stale-buffer replacement. No network or app-group write runs in these probes.
+
+Hosted database tests additionally cover unsorted imports, persisted slopes, a pre-existing phone successor, duplicate stability, cross-sensor separation, suppressed rows, long gaps and the current-reading recheck. These tests require an iOS test host; the macOS package deliberately excludes them.
+
+Device acceptance:
+
+1. With optional adjustments/smoothing/cadence disabled, collect on Watch and confirm stored phone trends, delta and exported direction match the host rules. Repeat with those options enabled; current effects must use the processed visible value.
+2. Enable each desired existing integration and verify Nightscout, HealthKit and Dexcom Share receipt. Check speech, Bluetooth display, calendar, contact image and OS-AID sharing on fresh values. Disabled integrations must remain disabled.
+3. Test OS-AID sharing at zero and nonzero delay, including return to phone. Check original timestamps, configured sharing-value policy and delay; the phone must not publish an old cached buffer from before handoff. Recent calibration must retain the host's delay exclusion.
+4. Import offline history, repeat delivery and deliver older batches after a newer phone value. History should update without historical speech, live alerts or latest-value publishing. Verify existing cursor limits separately; arbitrary out-of-order remote backfill is not implemented.
+5. Compare ordinary phone readings and calibration prompts before/after. NFC and the Direct Libre login checklist must retain their existing behavior.
+
+Validation: 90 host tests, 96 phone parity cases, four import-routing cases and four delayed-sharing checks passed. The iPhone SDK source check passed for 29 primary sources, including the helper, coordinator and hosted database tests (compiled, not executed). The full unsigned build failed at widget asset compilation because the local simulator runtime service was unavailable. Device integration tests remain outstanding. Logs are in the workspace's `validation/shared-downstream` folder; temporary products are removed after validation.

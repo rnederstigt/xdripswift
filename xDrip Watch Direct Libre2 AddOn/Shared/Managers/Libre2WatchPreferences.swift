@@ -1,13 +1,20 @@
 import Foundation
 
-/// Display preferences belong to the Watch installation, not to a sensor handoff.
+/// Watch preferences belong to the installation, not to a sensor handoff.
 /// Keep the phone's last explicit unit choice when it cannot be reached after a restart.
 struct Libre2WatchPreferences {
     private let defaults: UserDefaults
     private let unitsKey = "directLibreWatchIsMgDl"
+    private let locationKey = "directLibreWatchBackgroundLocation"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+    }
+
+    /// Opt-in belongs to the Watch installation and survives sensor changes and restarts.
+    var backgroundLocationEnabled: Bool {
+        get { defaults.bool(forKey: locationKey) }
+        nonmutating set { defaults.set(newValue, forKey: locationKey) }
     }
 
     func restoreUnits(cachedUnit: Bool? = nil) -> Bool {

@@ -1194,69 +1194,91 @@ import AppIntents
             
             // if a new reading is created, create either initial calibration request or bgreading notification - upload to nightscout and check alerts
             if newReadingCreated {
-                _ = bgPostProcessingManager?.processLatestReadings()
-                sensorNoiseManager?.update(activeSensor: activeSensor)
-
-                // Publish the final stored value before optional downstream consumers perform their work.
-                updateLiveActivityAndWidgets(forceRestart: false)
-                
-                // only if no webOOPEnabled and overruleIsWebOOPEnabled false : if no two calibration exist yet then create calibration request notification, otherwise a bgreading notification and update labels
-                if firstCalibrationForActiveSensor == nil && lastCalibrationForActiveSensor == nil && (!cgmTransmitter.isWebOOPEnabled() && !cgmTransmitter.overruleIsWebOOPEnabled()) {
-                    // there must be at least 2 readings
-                    let latestReadings = bgReadingsAccessor.getLatestBgReadings(limit: 36, howOld: nil, forSensor: activeSensor, ignoreRawData: false, ignoreCalculatedValue: true, includingSuppressed: true)
-                    
-                    if latestReadings.count > 1 {
-                        trace("in processNewGlucoseData, calibration : two readings received, no calibrations exist yet and not web oopenabled, request calibation to user", log: self.log, category: ConstantsLog.categoryRootView, type: .info)
-                        
-                        createInitialCalibrationRequest()
-                    }
-                } else {
-                    // check alerts, create notification, set app badge
-                    checkAlertsCreateNotificationAndSetAppBadge()
-                    rootHomeStateModel.invalidateCharts()
-                    
-                    // update all text in  first screen
-                    updateLabelsAndChart(overrideApplicationState: false)
-                    
-                    updatePumpAndAIDStatusViews()
-                    
-                    // update mini-chart
-                    updateMiniChart()
-                    
-                    // update statistics related outlets
-                    updateStatistics(animate: false)
-                    
-                    // update data source info
-                    updateDataSourceInfo()
-                }
-                
-                // Always run the normal latest-reading Nightscout upload path.
-                // If post processing is also rewriting a recent BG tail, the
-                // sync manager serializes the overlap and runs this direct
-                // upload immediately afterwards.
-                nightscoutSyncManager?.uploadLatestBgReadings(lastConnectionStatusChangeTimeStamp: lastConnectionStatusChangeTimeStamp())
-                
-                nightscoutSyncManager?.syncAllWithNightscout()
-                
-                healthKitManager?.storeBgReadings()
-                
-                bgReadingSpeaker?.speakNewReading(lastConnectionStatusChangeTimeStamp: lastConnectionStatusChangeTimeStamp())
-                
-                dexcomShareUploadManager?.uploadLatestBgReadings(lastConnectionStatusChangeTimeStamp: lastConnectionStatusChangeTimeStamp())
-                
-                bluetoothPeripheralManager?.sendLatestReading()
-                
-                calendarManager?.processNewReading(lastConnectionStatusChangeTimeStamp: lastConnectionStatusChangeTimeStamp())
-                
-                contactImageManager?.processNewReading()
-                
-                loopManager?.share()
-                
-                watchManager?.updateWatchApp(forceComplicationUpdate: false)
+                processStoredGlucoseData(activeSensor: activeSensor, needsInitialCalibration: {
+                    firstCalibrationForActiveSensor == nil && lastCalibrationForActiveSensor == nil
+                        && (!cgmTransmitter.isWebOOPEnabled() && !cgmTransmitter.overruleIsWebOOPEnabled())
+                })
             }
         }
     }
     
+    /// Shared downstream work after acquisition/storage. Defaults preserve transmitter behavior.
+    /// Watch imports can update history without speaking or publishing an old value as current.
+    private func processStoredGlucoseData(
+        activeSensor: Sensor?, isWatchImport: Bool = false,
+        isCurrentReading: () -> Bool = { true }, needsInitialCalibration: () -> Bool = { false }
+    ) {
+        if let activeSensor {
+            _ = bgPostProcessingManager?.processLatestReadings()
+            sensorNoiseManager?.update(activeSensor: activeSensor)
+        }
+        let hasCurrentReading = isCurrentReading()
+
+        // Publish the final stored value before optional downstream consumers perform their work.
+        updateLiveActivityAndWidgets(forceRestart: false)
+
+        // only if no webOOPEnabled and overruleIsWebOOPEnabled false : if no two calibration exist yet then create calibration request notification, otherwise a bgreading notification and update labels
+        if needsInitialCalibration(), let activeSensor, let bgReadingsAccessor {
+            // there must be at least 2 readings
+            let latestReadings = bgReadingsAccessor.getLatestBgReadings(limit: 36, howOld: nil, forSensor: activeSensor, ignoreRawData: false, ignoreCalculatedValue: true, includingSuppressed: true)
+
+            if latestReadings.count > 1 {
+                trace("in processNewGlucoseData, calibration : two readings received, no calibrations exist yet and not web oopenabled, request calibation to user", log: self.log, category: ConstantsLog.categoryRootView, type: .info)
+
+                createInitialCalibrationRequest()
+            }
+        } else {
+            // check alerts, create notification, set app badge
+            if hasCurrentReading { checkAlertsCreateNotificationAndSetAppBadge() }
+            rootHomeStateModel.invalidateCharts()
+
+            // update all text in  first screen
+            updateLabelsAndChart(overrideApplicationState: isWatchImport)
+
+            updatePumpAndAIDStatusViews()
+
+            // update mini-chart
+            updateMiniChart()
+
+            // update statistics related outlets
+            updateStatistics(animate: false)
+
+            // update data source info
+            updateDataSourceInfo()
+        }
+
+        // Always run the normal latest-reading Nightscout upload path.
+        // If post processing is also rewriting a recent BG tail, the
+        // sync manager serializes the overlap and runs this direct
+        // upload immediately afterwards.
+        nightscoutSyncManager?.uploadLatestBgReadings(lastConnectionStatusChangeTimeStamp: lastConnectionStatusChangeTimeStamp())
+
+        nightscoutSyncManager?.syncAllWithNightscout()
+
+        healthKitManager?.storeBgReadings()
+
+        if hasCurrentReading {
+            bgReadingSpeaker?.speakNewReading(lastConnectionStatusChangeTimeStamp: lastConnectionStatusChangeTimeStamp())
+        }
+
+        dexcomShareUploadManager?.uploadLatestBgReadings(lastConnectionStatusChangeTimeStamp: lastConnectionStatusChangeTimeStamp())
+
+        if hasCurrentReading {
+            bluetoothPeripheralManager?.sendLatestReading()
+
+            calendarManager?.processNewReading(lastConnectionStatusChangeTimeStamp: lastConnectionStatusChangeTimeStamp())
+
+            contactImageManager?.processNewReading()
+
+            if isWatchImport {
+                Libre2PhoneReadingProcessing.prepareDelayedSharing(coreDataManager: coreDataManager, loopManager: loopManager)
+            }
+            loopManager?.share()
+        }
+
+        watchManager?.updateWatchApp(forceComplicationUpdate: isWatchImport)
+    }
+
     /// closes the SwiftUI snooze screen if it is currently visible
     private func closeSnoozeScreen() {
         rootTabStateModel?.dismissSnooze()
@@ -1936,13 +1958,18 @@ import AppIntents
         }
     }
     
-    /// Historical imports refresh normal displays/uploads, without invoking new-reading alarms
-    /// or treating a database reading as proof of a fresh iPhone BLE login.
-    @objc private func handleDirectLibreHistoryDidImport() {
-        rootHomeStateModel.invalidateCharts()
-        updateLabelsAndChart(overrideApplicationState: true)
-        watchManager?.updateWatchApp(forceComplicationUpdate: true)
-        updateLiveActivityAndWidgets(forceRestart: false)
+    /// A durable Watch import joins the shared downstream path without entering phone acquisition.
+    @objc private func handleDirectLibreHistoryDidImport(_ notification: Notification) {
+        let date = notification.userInfo?[Libre2PhoneHistoryUpdate.currentReadingDateKey] as? Date
+        let changedSensors = notification.userInfo?[Libre2PhoneHistoryUpdate.changedSensorIDsKey] as? [String] ?? []
+        let sensor = coreDataManager.flatMap { SensorsAccessor(coreDataManager: $0).fetchActiveSensor() }
+        let needsProcessing = sensor.map { changedSensors.contains($0.id) } ?? false
+        statisticsManager?.invalidate()
+        processStoredGlucoseData(
+            activeSensor: needsProcessing || date != nil ? sensor : nil, isWatchImport: true,
+            isCurrentReading: {
+                Libre2PhoneReadingProcessing.isCurrentReading(date, coreDataManager: self.coreDataManager)
+            })
     }
 
     @objc private func handleBgPostProcessingDidUpdate() {

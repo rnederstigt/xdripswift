@@ -16,6 +16,7 @@ final class Libre2WatchManager {
     private weak var display: Libre2WatchDisplay?
     private let handoff = Libre2WatchHandoff()
     private let historySync = Libre2WatchHistorySync()
+    private let locationSession = Libre2WatchLocationSession()
 
     init(display: Libre2WatchDisplay) {
         self.display = display
@@ -48,6 +49,7 @@ final class Libre2WatchManager {
 
     func receive(_ dictionary: [String: Any], reply: @escaping ([String: Any]) -> Void) {
         DispatchQueue.main.async {
+            if self.locationSession.receive(dictionary, reply: reply) { return }
             if self.historySync.receiveCleanup(dictionary, reply: reply) { return }
             guard dictionary[Libre2HandoffMessage.key] != nil else { reply([:]); return }
             self.handoff.receive(dictionary, reply: reply)

@@ -12,7 +12,13 @@ final class Libre2PhoneHistorySync {
     private var registry: Libre2HistoryRegistry?
     private var pending: [(Libre2HistoryBatch, (([String: Any]) -> Void)?)] = []
     private var isImporting = false
+    private var historyUpdate = Libre2PhoneHistoryUpdate()
     private let beforeStoreSave: (@Sendable () throws -> Void)?
+
+    private struct ImportResult {
+        var inserted = 0
+        var changedSensorIDs: Set<String> = []
+    }
 
     init(coreDataManager: CoreDataManager, session: WCSession, registry: Libre2HistoryRegistry? = nil,
          beforeStoreSave: (@Sendable () throws -> Void)? = nil) {
@@ -57,13 +63,19 @@ final class Libre2PhoneHistorySync {
                 importNext()
             }
             do {
-                let count = try await importReadings(batch)
+                let result = try await importReadings(batch)
                 let acknowledgement = try Libre2HistoryAcknowledgement(batch: batch).dictionary
                 respond(acknowledgement, reply: reply)
-                Libre2ActivityLog.shared.record("Saved \(count) Direct Watch readings on iPhone.")
-                // Also refresh after a duplicate: an earlier attempt may have saved into the
-                // parent context and then failed at the final persistent-store save.
-                NotificationCenter.default.post(name: Self.didImport, object: self)
+                Libre2ActivityLog.shared.record("Saved \(result.inserted) Direct Watch readings on iPhone.")
+                // Also publish after a duplicate: an earlier attempt may have failed at the
+                // final store save. Only a new, current value may refresh phone alerts.
+                let currentDate = historyUpdate.consume(currentReadingDate(in: batch),
+                    maximumAge: ConstantsFollower.maximumBgReadingAgeForAlertsInSeconds)
+                var info: [String: Any] = currentDate.map {
+                    [Libre2PhoneHistoryUpdate.currentReadingDateKey: $0]
+                } ?? [:]
+                info[Libre2PhoneHistoryUpdate.changedSensorIDsKey] = Array(result.changedSensorIDs)
+                NotificationCenter.default.post(name: Self.didImport, object: self, userInfo: info)
             } catch let rejection as Libre2HistoryRejection {
                 do {
                     respond(try rejection.dictionary, reply: reply)
@@ -105,7 +117,7 @@ final class Libre2PhoneHistorySync {
     }
 
     @MainActor
-    private func importReadings(_ batch: Libre2HistoryBatch) async throws -> Int {
+    private func importReadings(_ batch: Libre2HistoryBatch) async throws -> ImportResult {
         let registry = try sensorRegistry()
         // Upgrade an already active prototype session only when its saved identity still
         // matches the phone's sensor. Unknown completed sessions are never guessed.
@@ -123,7 +135,7 @@ final class Libre2PhoneHistorySync {
             catch Libre2HistoryError.unknownSensor { return nil }
         }
         let context = coreDataManager.privateChildManagedObjectContext()
-        let count = try await context.perform {
+        let result = try await context.perform {
             // Resolve the entire batch before inserting any rows.
             var sensors: [String: Sensor] = [:]
             for id in Set(sensorIDs.compactMap { $0 }) {
@@ -138,7 +150,7 @@ final class Libre2PhoneHistorySync {
             guard unresolvedIDs.isEmpty else {
                 throw Libre2HistoryRejection(batchID: batch.id, readingIDs: unresolvedIDs)
             }
-            var inserted = 0
+            var result = ImportResult()
             for (sample, sensorID) in zip(batch.readings, sensorIDs) {
                 guard let sensorID else { continue } // All mappings were resolved above.
                 let request = BgReading.fetchRequest()
@@ -156,16 +168,38 @@ final class Libre2PhoneHistorySync {
                 reading.calculatedValue = sample.glucose
                 reading.ageAdjustedRawValue = sample.glucose
                 reading.hideSlope = true
-                reading.backfilledAt = Date()
-                inserted += 1
+                let receivedAt = Date()
+                if receivedAt.timeIntervalSince(sample.date) > ConstantsBloodGlucose.minimumSecondsToConsiderAsBackfillDelay {
+                    reading.backfilledAt = receivedAt
+                }
+                result.inserted += 1
+                result.changedSensorIDs.insert(sensorID)
+            }
+            if let start = batch.readings.map(\.date).min(), let end = batch.readings.map(\.date).max() {
+                result.changedSensorIDs.formUnion(try Libre2PhoneReadingProcessing.updateSlopes(
+                    sensorIDs: Set(sensorIDs.compactMap { $0 }), from: start, to: end, context: context))
             }
             if context.hasChanges { try context.save() }
-            return inserted
+            return result
         }
         // Saving the child/main contexts alone is not durable. Always attempt the final save,
         // even for a duplicate batch after an earlier disk-save failure.
         try await saveToPersistentStore()
-        return count
+        return result
+    }
+
+    /// AlertManager reads the newest stored value, so only announce that same reading,
+    /// belonging to both this batch and the currently active phone sensor.
+    @MainActor
+    private func currentReadingDate(in batch: Libre2HistoryBatch) -> Date? {
+        guard UserDefaults.standard.isMaster,
+            let activeSensor = SensorsAccessor(coreDataManager: coreDataManager).fetchActiveSensor(),
+            let latest = BgReadingsAccessor(coreDataManager: coreDataManager).getLatestBgReadings(
+                limit: 1, howOld: nil, forSensor: nil, ignoreRawData: true, ignoreCalculatedValue: false).first,
+            latest.sensor?.id == activeSensor.id,
+            batch.readings.contains(where: { $0.id == latest.id })
+        else { return nil }
+        return latest.timeStamp
     }
 
     private func saveToPersistentStore() async throws {

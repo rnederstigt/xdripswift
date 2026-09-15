@@ -840,6 +840,12 @@
 		FED920DB32AC5A4FE1ED70B5 /* Libre2ActivityLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CD5664E42CBC17E5170C07D /* Libre2ActivityLog.swift */; };
 		01198C348761F9CE85639803 /* Libre2Checklist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33C7E3733963F1651F4C3532 /* Libre2Checklist.swift */; };
 		6746AE04B4880385717EC6A2 /* Libre2PhoneHandoff+Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00DEDC6E83615FC5081622F /* Libre2PhoneHandoff+Settings.swift */; };
+		1109E70702BD67137A8F8F5A /* Libre2LocationRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72A0F46081875E1FBCC418E /* Libre2LocationRequest.swift */; };
+		7E456FB65D74ACC46BE65DA9 /* Libre2LocationRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72A0F46081875E1FBCC418E /* Libre2LocationRequest.swift */; };
+		2B5638CB68D06E1333B62C1D /* Libre2WatchLocationSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C8EF2EF93BE478EE1A0D702 /* Libre2WatchLocationSession.swift */; };
+		D1DD8D7E8BCA2642588A6F64 /* Libre2LocationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2184BFD96FCD2BC3D403556F /* Libre2LocationSettingsView.swift */; };
+		ACB9D0BE1CC0CB811084590E /* Libre2PhoneHistoryUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E6D5F241D071C95604C7770 /* Libre2PhoneHistoryUpdate.swift */; };
+		9D46DA77A757E396E9FBD623 /* Libre2PhoneReadingProcessing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 784D0EB2FD299F2CB8771416 /* Libre2PhoneReadingProcessing.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2047,6 +2053,15 @@
 		AE211B188762A9EB23F8FD6B /* check_upstream_relay.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = "check_upstream_relay.py"; sourceTree = "<group>"; };
 		79DD0EE61F81318C5548D700 /* TESTING.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "TESTING.md"; sourceTree = "<group>"; };
 		A55EB200085BD00279EAC133 /* Libre2PhoneReadingStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Libre2PhoneReadingStatus.swift"; sourceTree = "<group>"; };
+		B72A0F46081875E1FBCC418E /* Libre2LocationRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2LocationRequest.swift; sourceTree = "<group>"; };
+		0C8EF2EF93BE478EE1A0D702 /* Libre2WatchLocationSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2WatchLocationSession.swift; sourceTree = "<group>"; };
+		2184BFD96FCD2BC3D403556F /* Libre2LocationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2LocationSettingsView.swift; sourceTree = "<group>"; };
+		173E98613EAE4EC730DC86D8 /* Libre2WatchLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2WatchLocationTests.swift; sourceTree = "<group>"; };
+		EA6E3BEFADCA7DA847425CF0 /* check_watch_location.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = check_watch_location.py; sourceTree = "<group>"; };
+		9E6D5F241D071C95604C7770 /* Libre2PhoneHistoryUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2PhoneHistoryUpdate.swift; sourceTree = "<group>"; };
+		70F8331E107D06EA2370A4BD /* Libre2PhoneHistoryUpdateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2PhoneHistoryUpdateTests.swift; sourceTree = "<group>"; };
+		F4A40C521322187A858221F7 /* check_phone_import_routing.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = check_phone_import_routing.py; sourceTree = "<group>"; };
+		784D0EB2FD299F2CB8771416 /* Libre2PhoneReadingProcessing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libre2PhoneReadingProcessing.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -3845,6 +3860,8 @@
 		F92E5A19757A2171C1E534FC /* DataModels */ = {
 			isa = PBXGroup;
 			children = (
+				9E6D5F241D071C95604C7770 /* Libre2PhoneHistoryUpdate.swift */,
+				B72A0F46081875E1FBCC418E /* Libre2LocationRequest.swift */,
 				33C7E3733963F1651F4C3532 /* Libre2Checklist.swift */,
 				B782408357FD530672F9C6F7 /* Libre2HandoffMessage.swift */,
 				9092193381919FFAED639D62 /* Libre2History.swift */,
@@ -3868,6 +3885,8 @@
 		EAD55195BFFEBA778AD4614B /* Scripts */ = {
 			isa = PBXGroup;
 			children = (
+				F4A40C521322187A858221F7 /* check_phone_import_routing.py */,
+				EA6E3BEFADCA7DA847425CF0 /* check_watch_location.py */,
 				07C9A492FB33C0318F7E5ED7 /* check_integration.py */,
 				AE211B188762A9EB23F8FD6B /* check_upstream_relay.py */,
 				2CB74DADFB62EB540F0860C9 /* check_upstream_scanning.py */,
@@ -3966,6 +3985,7 @@
 			children = (
 				0766E0435232FFE05436C188 /* Libre2PhoneHandoff.swift */,
 				9EC87C2B98AB447371F40AC0 /* Libre2PhoneHistorySync.swift */,
+				784D0EB2FD299F2CB8771416 /* Libre2PhoneReadingProcessing.swift */,
 			);
 			path = "Managers";
 			sourceTree = "<group>";
@@ -3986,6 +4006,8 @@
 		FB67011BB9DB38FA133D009E /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				70F8331E107D06EA2370A4BD /* Libre2PhoneHistoryUpdateTests.swift */,
+				173E98613EAE4EC730DC86D8 /* Libre2WatchLocationTests.swift */,
 				25E203D6EBBC8F1295D73ECF /* Libre2HandoffTests.swift */,
 				73BC22E4166CB7E5C4F9628D /* Libre2HistoryTests.swift */,
 				52BBF45632CDC30AFE6F7E6E /* Libre2PhoneHistorySyncTests.swift */,
@@ -3998,6 +4020,7 @@
 		DAA810CCBA5DD64019FA95FB /* Managers */ = {
 			isa = PBXGroup;
 			children = (
+				0C8EF2EF93BE478EE1A0D702 /* Libre2WatchLocationSession.swift */,
 				4C9FA9672F61FAD955AAF327 /* Libre2WatchHandoff.swift */,
 				773265EFB6DAF0F1265148D6 /* Libre2WatchHistorySync.swift */,
 				7E1561C9BCEC0A5DDAB4C18E /* Libre2WatchManager.swift */,
@@ -4008,6 +4031,7 @@
 		09FC37151F74AAD2B584A9F4 /* SwiftUIViews */ = {
 			isa = PBXGroup;
 			children = (
+				2184BFD96FCD2BC3D403556F /* Libre2LocationSettingsView.swift */,
 				B8F63CB13830A5F0CA538597 /* Libre2DiagnosticsViews.swift */,
 				77E240AA658B72ECA00241C7 /* Libre2PhoneExperimentView.swift */,
 				D00DEDC6E83615FC5081622F /* Libre2PhoneHandoff+Settings.swift */,
@@ -4509,6 +4533,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2B5638CB68D06E1333B62C1D /* Libre2WatchLocationSession.swift in Sources */,
+				7E456FB65D74ACC46BE65DA9 /* Libre2LocationRequest.swift in Sources */,
 				FED920DB32AC5A4FE1ED70B5 /* Libre2ActivityLog.swift in Sources */,
 				5C48C81AF05AC2679F4FAEE2 /* Libre2WatchHistorySync.swift in Sources */,
 				29A40C67A75206CF659041C9 /* Libre2HistoryQueue.swift in Sources */,
@@ -4626,12 +4652,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ACB9D0BE1CC0CB811084590E /* Libre2PhoneHistoryUpdate.swift in Sources */,
+				D1DD8D7E8BCA2642588A6F64 /* Libre2LocationSettingsView.swift in Sources */,
+				1109E70702BD67137A8F8F5A /* Libre2LocationRequest.swift in Sources */,
 				C3EF2E76B6D767667F8DB3E4 /* Libre2PhoneSwitchAction.swift in Sources */,
 				5380D5FA8D661B0752AC5C32 /* Libre2PhoneReadingStatus.swift in Sources */,
 				6746AE04B4880385717EC6A2 /* Libre2PhoneHandoff+Settings.swift in Sources */,
 				01198C348761F9CE85639803 /* Libre2Checklist.swift in Sources */,
 				8085F0E12998C2E5956E454C /* Libre2ActivityLog.swift in Sources */,
 				DD32CCAB7995B6CDA89C3DAE /* Libre2PhoneHistorySync.swift in Sources */,
+				9D46DA77A757E396E9FBD623 /* Libre2PhoneReadingProcessing.swift in Sources */,
 				903B0FF03615B3E60FA54E61 /* Libre2HistoryRegistry.swift in Sources */,
 				89A04A1A893BA9BEA71DAE84 /* Libre2HistoryQueue.swift in Sources */,
 				2A8248AD5AE8B19A4FC1B743 /* Libre2History.swift in Sources */,

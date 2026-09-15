@@ -5,6 +5,61 @@ import Foundation
 class Texts_DirectLibre {
     private static let filename = "DirectLibre"
 
+    // MARK: - Optional background location
+
+    static let locationTitle = NSLocalizedString(
+        "locationTitle", tableName: filename, bundle: .main, value: "Background collection using location — Experimental",
+        comment: "Direct Libre experiment")
+
+    static let locationHelp = NSLocalizedString(
+        "locationHelp", tableName: filename, bundle: .main, value: "Uses ongoing Watch location updates to help Direct Libre run in the background. Locations are not saved or shared. Uses extra battery; continuous collection is not guaranteed. After enabling, open xDrip on the Watch and allow location access.",
+        comment: "Direct Libre experiment")
+
+    static let locationNeedsWatch = NSLocalizedString(
+        "locationNeedsWatch", tableName: filename, bundle: .main, value: "Open xDrip on the Watch to read or change this setting.",
+        comment: "Direct Libre experiment")
+
+    static let locationUnconfirmed = NSLocalizedString(
+        "locationUnconfirmed", tableName: filename, bundle: .main, value: "Could not confirm the Watch setting. Open both apps and reopen this page. Update both apps if this persists.",
+        comment: "Direct Libre experiment")
+
+    static let locationOff = NSLocalizedString(
+        "locationOff", tableName: filename, bundle: .main, value: "Background location is off.",
+        comment: "Direct Libre experiment")
+
+    static let locationNeedsOwnership = NSLocalizedString(
+        "locationNeedsOwnership", tableName: filename, bundle: .main, value: "Background location is enabled; waiting for Watch sensor ownership.",
+        comment: "Direct Libre experiment")
+
+    static let locationOpenWatch = NSLocalizedString(
+        "locationOpenWatch", tableName: filename, bundle: .main, value: "Open xDrip on the Watch to start background location.",
+        comment: "Direct Libre experiment")
+
+    static let locationPermission = NSLocalizedString(
+        "locationPermission", tableName: filename, bundle: .main, value: "Allow location access in xDrip on the Watch.",
+        comment: "Direct Libre experiment")
+
+    static let locationDenied = NSLocalizedString(
+        "locationDenied", tableName: filename, bundle: .main, value: "Location access is unavailable. Check Location Services and xDrip permission on the Watch.",
+        comment: "Direct Libre experiment")
+
+    static let locationStarting = NSLocalizedString(
+        "locationStarting", tableName: filename, bundle: .main, value: "Background location started; waiting for a location update.",
+        comment: "Direct Libre experiment")
+
+    static let locationReceiving = NSLocalizedString(
+        "locationReceiving", tableName: filename, bundle: .main, value: "Location updates received. Background glucose collection remains experimental.",
+        comment: "Direct Libre experiment")
+
+    static let locationUnavailable = NSLocalizedString(
+        "locationUnavailable", tableName: filename, bundle: .main, value: "Location is temporarily unavailable; waiting for updates.",
+        comment: "Direct Libre experiment")
+
+    static func locationLastStatus(_ status: String) -> String {
+        String(format: NSLocalizedString("locationLastStatus", tableName: filename, bundle: .main,
+            value: "Watch status at last check: %@", comment: "Direct Libre experiment"), status)
+    }
+
     // MARK: - Reading source and connection status
 
     static let phoneRelay = NSLocalizedString(
