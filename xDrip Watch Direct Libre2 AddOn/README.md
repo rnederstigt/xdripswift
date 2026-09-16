@@ -32,6 +32,22 @@ While enabled, choose **100 m / 1 km / 3 km** requested location accuracy; 100 m
 
 Location support continues through temporary BLE loss and stops when disabled or ownership leaves the Watch. After a new app launch, starting location requires opening xDrip. Information buttons explain background limitations, accuracy and the notification test. The phone shows the last reported location status; reopen the page to refresh it. Verify background collection from advancing measurement timestamps, rather than the antenna or a single location callback.
 
+### If Watch readings update but the phone lags
+
+Background **collection** and **delivery to the phone** are separate. The Watch can keep receiving glucose and updating its complication while live WatchConnectivity messaging remains unavailable. In that state, phone updates depend on system-scheduled background delivery and may be several minutes behind.
+
+**Test Watch notification** is a manual way to try to restore immediate phone updates without waiting for a missed-readings alarm. In the recorded device test, presentation of this notification on the Watch was followed almost immediately by restored live reachability. The next six readings reached the phone in roughly 0.1–0.4 seconds each while both apps remained backgrounded. Delivery continued after the notification closed; tapping or dismissing it was not needed to initiate delivery. A notification appearing only on the phone did not reproduce the same sustained recovery in earlier tests.
+
+To try it after switching collection to the Watch:
+
+1. Open both apps. On the phone's experimental page, tap **Background collection → Test Watch notification** and allow Watch notification alerts if asked.
+2. Wait for scheduling confirmation, then return to the watch face and lock the phone within 30 seconds.
+3. Let the test notification appear on the Watch without opening either app. Compare subsequent measurement timestamps on the Watch complication and phone Live Activity for at least five minutes after it closes. If needed, inspect the phone's stored readings afterwards; opening an app during the test can itself restore communication.
+
+The button schedules one Watch-local notification, not a glucose alarm. Repeated presses replace the pending test. **Detailed diagnostics** is optional for using it; enable it beforehand under **Diagnostics & recovery** if you want to export evidence afterwards.
+
+This is an observed workaround, not a guaranteed background connection. The notification does not explicitly send readings or grant extra background permissions: when live reachability returns, the existing delivery path sends the latest available reading and subsequent readings. The underlying system behaviour and duration of the effect remain unconfirmed. Nothing schedules this notification automatically on handoff or repeats it in the background. Focus and notification settings can affect presentation, and scheduling confirmation alone does not prove improved delivery.
+
 ## Recovery
 
 | Situation | Action |
@@ -48,7 +64,7 @@ For a delivery delay, reproduce it with both apps backgrounded, then open xDrip 
 
 For delivery which begins with the missed-readings alert, enable **Detailed diagnostics** before the handoff, leave both apps backgrounded and leave the alert untouched. Note when it appears and when phone readings resume, then export promptly. `Lifecycle` entries identify app/process changes, the custom Watch notification callback, phone notification actions and WatchConnectivity background-task start/completion. They observe these events without requesting a connection or extra runtime.
 
-To test the notification link without waiting for an alarm, enable **Detailed diagnostics**, then tap **Test Watch notification** in the **Background collection** section with both apps open. Allow Watch notification alerts if asked. After the Watch confirms scheduling, return to the watch face and lock the phone within 30 seconds. A single Watch-local test notification uses its own custom view and does not alter glucose alarms. Repeated presses replace the pending test. Leave both apps closed for five minutes after it appears, note when the notification closes, then load and share the logs. Notification settings and Focus can affect presentation; scheduling confirmation is not proof of delivery or improved synchronisation.
+For the manual notification test above, enable **Detailed diagnostics** before reproducing the delay and export afterwards. Compare the Watch notification event (`notificationTest=true`), restored reachability, latest-reading sends and phone imports. See [recorded evidence and device checks](Docs/TESTING.md) for the observed result and how to repeat it.
 
 ## Limits
 

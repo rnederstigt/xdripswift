@@ -26,7 +26,7 @@ class Texts_DirectLibre {
     static let phoneLatestUnavailable = NSLocalizedString(
         "phoneLatestUnavailable", tableName: filename, bundle: .main, value: "Latest phone reading is not available here yet.", comment: "No cached phone reading")
     static let notificationTestShortHelp = NSLocalizedString(
-        "notificationTestShortHelp", tableName: filename, bundle: .main, value: "Schedules one Watch notification in 30 seconds.", comment: "Compact notification diagnostic help")
+        "notificationTestShortHelp", tableName: filename, bundle: .main, value: "May restore immediate phone updates when the Watch is collecting but the phone lags. Schedules one Watch notification in 30 seconds.", comment: "Observed notification benefit and scheduling delay")
     static func checklistProgress(_ passed: Int, _ total: Int) -> String {
         String(format: NSLocalizedString(
             "checklistProgress", tableName: filename, bundle: .main, value: "%d of %d requirements satisfied",
@@ -53,7 +53,7 @@ class Texts_DirectLibre {
         comment: "Watch diagnostic notification content")
     static let notificationTestHelp = NSLocalizedString(
         "notificationTestHelp", tableName: filename, bundle: .main,
-        value: "Schedules one notification on the Watch in 30 seconds. After confirmation, return to the watch face and lock the phone. Enable detailed diagnostics before testing. Another press replaces the pending test.",
+        value: "In testing, a notification appearing on the Watch restored immediate delivery of new readings to the phone while both apps stayed in the background. Updates continued after the notification closed, without needing to tap it. This is an experimental workaround, not a guaranteed connection.\n\nOpen both apps to schedule one Watch notification in 30 seconds. After confirmation, return to the watch face and lock the phone. Let the notification appear on the Watch and check subsequent reading times without opening either app. Notification settings and Focus may affect presentation. Another press replaces the pending test.\n\nDetailed diagnostics is optional; enable it beforehand only if you want to record and share the test logs.",
         comment: "Direct Libre diagnostic instructions")
     static let notificationTestNeedsWatch = NSLocalizedString(
         "notificationTestNeedsWatch", tableName: filename, bundle: .main,
