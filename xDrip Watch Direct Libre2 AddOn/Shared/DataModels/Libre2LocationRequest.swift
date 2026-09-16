@@ -4,6 +4,14 @@ import Foundation
 enum Libre2LocationRequest: Codable, Equatable {
     case inspect
     case setEnabled(Bool)
+    case setAccuracy(Accuracy)
+
+    /// Core Location's coarse accuracy levels, in metres. Existing installations keep 100 m.
+    enum Accuracy: Int, Codable, CaseIterable {
+        case hundredMeters = 100
+        case kilometer = 1000
+        case threeKilometers = 3000
+    }
 
     static let key = "directLibreLocation"
 

@@ -119,3 +119,10 @@ This implementation has no fixed one-hour timer. It also makes no guarantee of s
 The existing Watch initialization and status hooks call `restoreDirectLibrePreferences` and `receiveDirectLibrePreferences`. The add-on persists all four explicit phone glucose limits in mg/dL alongside the existing unit preference. A valid saved set takes precedence over the complication cache; existing installations can migrate cached settings. Restore occurs before collector startup, so a first direct reading cannot overwrite the complication with startup defaults.
 
 Fresh, complete phone limits can update during direct collection without importing phone sensor status or glucose. A limits-only change returns through the host's existing complication refresh path. Duplicate settings do not request an extra refresh; malformed/partial or expired payloads do not overwrite saved limits. Ordinary relay retains its original status assignments. No new message, timer, background-session hook or Watch alarm is added.
+
+
+## Location accuracy selection
+
+The existing experimental location settings view uses a three-segment control for `Libre2LocationRequest.Accuracy` (100, 1000 or 3000 metres). It sends one interactive `setAccuracy` request per selection and highlights only the acknowledged setting. Existing replies gain an `accuracy` field; older Watch replies still support the toggle but show an update notice instead of an unsupported accuracy control. Failed replies leave the controls unconfirmed/disabled until another inspection.
+
+The Watch preference defaults to 100 metres and is independent of the background opt-in, sensor session, units and glucose limits. `Libre2WatchLocationSession.refresh` applies the saved `desiredAccuracy` to an existing location manager before the already-running check, so changes take effect without stopping location or BLE. Existing foreground-start and ownership guards still apply. No change to the distance filter, polling, capabilities or host hooks is needed.

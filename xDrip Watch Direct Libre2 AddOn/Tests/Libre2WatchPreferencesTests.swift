@@ -36,7 +36,8 @@ final class Libre2WatchPreferencesTests: XCTestCase {
     }
 
     func testLocationRequestsRoundTripAndRejectMalformedMessages() throws {
-        for request: Libre2LocationRequest in [.inspect, .setEnabled(true), .setEnabled(false)] {
+        for request: Libre2LocationRequest in [.inspect, .setEnabled(true), .setEnabled(false)] +
+            Libre2LocationRequest.Accuracy.allCases.map({ .setAccuracy($0) }) {
             XCTAssertEqual(try Libre2LocationRequest.decode(request.dictionary), request)
         }
         for dictionary: [String: Any] in [[:], [Libre2LocationRequest.key: true],
@@ -135,6 +136,29 @@ final class Libre2WatchPreferencesTests: XCTestCase {
         XCTAssertNil(preferences.restoreLimits(cachedLimits: invalid))
         XCTAssertEqual(preferences.receiveLimits(limitsStatus, now: now), limits)
         XCTAssertEqual(preferences.restoreLimits(), limits)
+    }
+
+
+    func testLocationAccuracyDefaultsToHundredMetersAndSurvivesRestart() throws {
+        let preferences = Libre2WatchPreferences(defaults: defaults)
+        XCTAssertEqual(preferences.backgroundLocationAccuracy, .hundredMeters)
+        _ = preferences.restoreUnits(cachedUnit: false)
+        _ = preferences.receiveLimits(limitsStatus, now: now)
+        for accuracy in Libre2LocationRequest.Accuracy.allCases {
+            preferences.backgroundLocationAccuracy = accuracy
+            let restored = Libre2WatchPreferences(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
+            XCTAssertEqual(restored.backgroundLocationAccuracy, accuracy)
+            XCTAssertFalse(restored.backgroundLocationEnabled)
+            XCTAssertFalse(restored.restoreUnits())
+            XCTAssertEqual(restored.restoreLimits(), limits)
+        }
+    }
+
+    func testUnsupportedLocationAccuracyIsRejected() throws {
+        let dictionary = try Libre2LocationRequest.setAccuracy(.hundredMeters).dictionary
+        let encoded = try XCTUnwrap(dictionary[Libre2LocationRequest.key] as? Data)
+        let invalid = try XCTUnwrap(String(data: encoded, encoding: .utf8)).replacingOccurrences(of: "100", with: "200")
+        XCTAssertThrowsError(try Libre2LocationRequest.decode([Libre2LocationRequest.key: Data(invalid.utf8)]))
     }
 
 }

@@ -6,6 +6,7 @@ struct Libre2WatchPreferences {
     private let defaults: UserDefaults
     private let unitsKey = "directLibreWatchIsMgDl"
     private let locationKey = "directLibreWatchBackgroundLocation"
+    private let locationAccuracyKey = "directLibreWatchLocationAccuracy"
     private let limitsKey = "directLibreWatchGlucoseLimits"
 
     struct GlucoseLimits: Codable, Equatable {
@@ -27,6 +28,17 @@ struct Libre2WatchPreferences {
     var backgroundLocationEnabled: Bool {
         get { defaults.bool(forKey: locationKey) }
         nonmutating set { defaults.set(newValue, forKey: locationKey) }
+    }
+
+    var backgroundLocationAccuracy: Libre2LocationRequest.Accuracy {
+        get {
+            Libre2LocationRequest.Accuracy(rawValue: defaults.integer(forKey: locationAccuracyKey)) ?? .hundredMeters
+        }
+        nonmutating set {
+            if backgroundLocationAccuracy != newValue {
+                defaults.set(newValue.rawValue, forKey: locationAccuracyKey)
+            }
+        }
     }
 
     func restoreUnits(cachedUnit: Bool? = nil) -> Bool {

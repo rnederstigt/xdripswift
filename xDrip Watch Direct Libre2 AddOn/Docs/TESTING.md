@@ -143,3 +143,13 @@ After installing, open both apps so the Watch receives current phone limits. In 
 
 
 September 15 limits validation: 94 host tests, four Watch preference-adapter checks, 476 phone/Watch trend comparisons and the ordinary relay comparison passed. Watch device-SDK source checks passed for the add-on and the host Watch model; the latter included Xcode-generated asset declarations. The full unsigned Watch build remains blocked by unavailable watchsimulator runtimes during asset compilation. Hardware verification remains necessary. Logs are retained outside the repository in `validation/watch-display-limits`; temporary build products are removed after validation.
+
+
+## Location accuracy buttons
+
+The host tests cover all request variants, rejection of unsupported accuracy values and preference persistence independently of units/limits and the location opt-in. The location probe checks applying all three values during an active background session without another start/stop or permission request, saving while off, restoring before foreground startup, and rejecting malformed messages without changing the active session. The display-preference probe still covers units and limits after adding the accuracy preference.
+
+Device checks: open the experimental page with both apps reachable and confirm **100 m / 1 km / 3 km** are shown. Select each option and verify its highlight after the Watch replies and after reopening/restarting. Change while location is running and confirm sensor readings continue. Configure while off, then enable/open Watch xDrip and confirm the saved selection. With Watch unreachable or an older Watch build, no unconfirmed accuracy change should be possible. Compare matched battery/reading-continuity trials for all three choices, including stationarity and another app recording GPS; neither savings nor uninterrupted execution follows from the requested accuracy alone.
+
+
+September 15 accuracy validation: 96 host tests, 11 location-session checks and four units/limits adapter regression checks passed. Xcode source membership remained valid, and iPhone/Watch device-SDK source checks passed. Runtime tests still need an installed pair of apps; these probes do not measure battery savings or watchOS scheduling.

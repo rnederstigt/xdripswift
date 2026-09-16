@@ -165,6 +165,56 @@ struct LocationTests {
             activate()
             precondition(manager.starts == 2)
         }
+
+        try check("accuracy changes apply to a running background session without restarting") { helper, defaults in
+            own(.watch)
+            _ = try send(.setEnabled(true), to: helper)
+            let manager = authorize(helper)
+            precondition(manager.desiredAccuracy == kCLLocationAccuracyHundredMeters)
+            WKExtension.shared().applicationState = .background
+            for accuracy in Libre2LocationRequest.Accuracy.allCases.reversed() {
+                for _ in 0..<2 {
+                    let reply = try send(.setAccuracy(accuracy), to: helper)
+                    precondition(reply["accuracy"] as? Int == accuracy.rawValue)
+                    precondition(reply["enabled"] as? Bool == true)
+                    precondition(manager.desiredAccuracy == Double(accuracy.rawValue))
+                    precondition(Libre2WatchPreferences(defaults: defaults).backgroundLocationAccuracy == accuracy)
+                }
+            }
+            precondition(manager.starts == 1 && manager.stops == 0 && manager.requests == 1)
+            precondition(CLLocationManager.instances.count == 1 && manager.distanceFilter == kCLDistanceFilterNone)
+            precondition(Libre2SessionStore.shared.snapshot.owner == .watch)
+        }
+        try check("accuracy can be saved while off and is restored before the next foreground start") { helper, defaults in
+            WKExtension.shared().applicationState = .background
+            let reply = try send(.setAccuracy(.threeKilometers), to: helper)
+            precondition(reply["enabled"] as? Bool == false && reply["accuracy"] as? Int == 3000)
+            precondition(CLLocationManager.instances.isEmpty)
+            let restored = Libre2WatchLocationSession(defaults: defaults)
+            let restoredReply = try send(.inspect, to: restored)
+            precondition(restoredReply["accuracy"] as? Int == 3000)
+            own(.watch)
+            _ = try send(.setEnabled(true), to: restored)
+            precondition(CLLocationManager.instances.isEmpty)
+            // Activate only this helper; the fixture helper represents the previous app instance.
+            WKExtension.shared().applicationState = .active
+            _ = try send(.inspect, to: restored)
+            let manager = authorize(restored)
+            precondition(manager.desiredAccuracy == 3000 && manager.starts == 1)
+        }
+        try check("malformed accuracy requests leave the saved selection and active session unchanged") { helper, defaults in
+            own(.watch)
+            _ = try send(.setEnabled(true), to: helper)
+            let manager = authorize(helper)
+            let message = try Libre2LocationRequest.setAccuracy(.hundredMeters).dictionary
+            let data = message[Libre2LocationRequest.key] as! Data
+            let malformed = String(data: data, encoding: .utf8)!.replacingOccurrences(of: "100", with: "-1")
+            precondition(helper.receive([Libre2LocationRequest.key: Data(malformed.utf8)]) {
+                precondition($0["error"] != nil)
+            })
+            precondition(Libre2WatchPreferences(defaults: defaults).backgroundLocationAccuracy == .hundredMeters)
+            precondition(manager.desiredAccuracy == 100 && manager.starts == 1 && manager.stops == 0)
+        }
         try check("restart restores opt-in but never starts from a background launch") { _, defaults in
             WKExtension.shared().applicationState = .background
             Libre2WatchPreferences(defaults: defaults).backgroundLocationEnabled = true

@@ -19,6 +19,26 @@ class Texts_DirectLibre {
         "locationNeedsWatch", tableName: filename, bundle: .main, value: "Open xDrip on the Watch to read or change this setting.",
         comment: "Direct Libre experiment")
 
+    static let locationAccuracyTitle = NSLocalizedString(
+        "locationAccuracyTitle", tableName: filename, bundle: .main, value: "Requested location accuracy",
+        comment: "Direct Libre experiment")
+
+    static let locationAccuracyHelp = NSLocalizedString(
+        "locationAccuracyHelp", tableName: filename, bundle: .main,
+        value: "Coarser accuracy may reduce battery use. Check that background glucose collection continues reliably.",
+        comment: "Direct Libre experiment")
+
+    static let locationAccuracyNeedsUpdate = NSLocalizedString(
+        "locationAccuracyNeedsUpdate", tableName: filename, bundle: .main,
+        value: "Update the Watch app to choose location accuracy.", comment: "Direct Libre experiment")
+
+    static func locationAccuracyLabel(_ accuracy: Libre2LocationRequest.Accuracy) -> String {
+        let meters = Double(accuracy.rawValue)
+        return Measurement(value: meters < 1000 ? meters : meters / 1000,
+                           unit: meters < 1000 ? UnitLength.meters : .kilometers)
+            .formatted(.measurement(width: .abbreviated, usage: .asProvided))
+    }
+
     static let locationUnconfirmed = NSLocalizedString(
         "locationUnconfirmed", tableName: filename, bundle: .main, value: "Could not confirm the Watch setting. Open both apps and reopen this page. Update both apps if this persists.",
         comment: "Direct Libre experiment")

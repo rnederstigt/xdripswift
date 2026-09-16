@@ -6,6 +6,7 @@ struct Libre2LocationSettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var handoff = Libre2PhoneHandoff.shared
     @State private var enabled: Bool?
+    @State private var accuracy: Libre2LocationRequest.Accuracy?
     @State private var status = ""
     @State private var isBusy = false
     @State private var isVisible = false
@@ -17,6 +18,21 @@ struct Libre2LocationSettingsView: View {
                 set: { request(.setEnabled($0)) }))
                 .disabled(enabled == nil || isBusy || !handoff.reachable)
             Text(Texts_DirectLibre.locationHelp).font(.caption).foregroundColor(.secondary)
+            if let accuracy {
+                Text(Texts_DirectLibre.locationAccuracyTitle).font(.subheadline)
+                Picker(Texts_DirectLibre.locationAccuracyTitle, selection: Binding(
+                    get: { self.accuracy ?? accuracy },
+                    set: { if $0 != self.accuracy { request(.setAccuracy($0)) } })) {
+                    ForEach(Libre2LocationRequest.Accuracy.allCases, id: \.self) { option in
+                        Text(Texts_DirectLibre.locationAccuracyLabel(option)).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(enabled == nil || isBusy || !handoff.reachable)
+                Text(Texts_DirectLibre.locationAccuracyHelp).font(.caption).foregroundColor(.secondary)
+            } else if enabled != nil {
+                Text(Texts_DirectLibre.locationAccuracyNeedsUpdate).font(.caption).foregroundColor(.secondary)
+            }
             if isBusy { ProgressView() }
             Text(handoff.reachable ? status : Texts_DirectLibre.locationNeedsWatch)
                 .font(.caption).foregroundColor(.secondary)
@@ -48,6 +64,7 @@ struct Libre2LocationSettingsView: View {
                         return
                     }
                     enabled = value
+                    accuracy = (reply["accuracy"] as? Int).flatMap(Libre2LocationRequest.Accuracy.init(rawValue:))
                     status = Texts_DirectLibre.locationLastStatus(detail)
                 }
             }, errorHandler: { _ in

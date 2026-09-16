@@ -35,9 +35,11 @@ final class Libre2WatchLocationSession: NSObject, CLLocationManagerDelegate {
             switch try Libre2LocationRequest.decode(dictionary) {
             case .inspect: break
             case .setEnabled(let enabled): preferences.backgroundLocationEnabled = enabled
+            case .setAccuracy(let accuracy): preferences.backgroundLocationAccuracy = accuracy
             }
             refresh()
-            reply(["enabled": preferences.backgroundLocationEnabled, "status": status])
+            reply(["enabled": preferences.backgroundLocationEnabled, "status": status,
+                   "accuracy": preferences.backgroundLocationAccuracy.rawValue])
         } catch { reply(["error": error.localizedDescription]) }
         return true
     }
@@ -61,14 +63,15 @@ final class Libre2WatchLocationSession: NSObject, CLLocationManagerDelegate {
         if locationManager == nil {
             let manager = CLLocationManager()
             manager.delegate = self
-            // A starting point for device testing, not a promised update interval/energy budget.
-            manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
             manager.distanceFilter = kCLDistanceFilterNone
             manager.activityType = .other
             manager.allowsBackgroundLocationUpdates = true
             locationManager = manager
         }
         guard let manager = locationManager else { return }
+        // Apply to the existing session, including in the background; no location/BLE restart.
+        let accuracy = Double(preferences.backgroundLocationAccuracy.rawValue)
+        if manager.desiredAccuracy != accuracy { manager.desiredAccuracy = accuracy }
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
             guard !isUpdating else { return }

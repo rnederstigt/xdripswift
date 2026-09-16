@@ -123,6 +123,7 @@ with tempfile.TemporaryDirectory(prefix='direct-libre-preferences-') as director
     main.write_text(code)
     binary = work / 'preferences-tests'
     sources = [addon / 'Shared/Managers/Libre2WatchPreferences.swift',
+               addon / 'Shared/DataModels/Libre2LocationRequest.swift',
                addon / 'Shared/Constants/ConstantsLibre2.swift',
                addon / 'Shared/Managers/Libre2ReadingPipeline.swift',
                repo / 'xDrip Watch Complication/DataModels/ComplicationSharedUserDefaultsModel.swift']
