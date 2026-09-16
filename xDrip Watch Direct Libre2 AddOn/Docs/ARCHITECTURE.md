@@ -53,7 +53,7 @@ flowchart TB
     class Services,Views reused
 ```
 
-The add-on is compiled into the existing iPhone and Watch targets, not loaded as a plugin. `Shared` contains models, persistence and the Watch protocol port; `iPhone` and `Watch` contain platform adapters, managers and views. Tests and scripts are not shipped in app targets. No Loop code is involved.
+The add-on is compiled into the existing iPhone and Watch targets, not loaded as a plugin. `Shared` contains models, persistence and the Watch protocol port; `iPhone` and `Watch` contain platform adapters, managers and views. Tests and scripts are not shipped in app targets.
 
 | Responsibility | Entry points within the add-on |
 | --- | --- |

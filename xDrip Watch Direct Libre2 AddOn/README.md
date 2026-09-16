@@ -2,7 +2,7 @@
 
 An experimental xDrip4iOS add-on that lets Apple Watch receive Libre 2 glucose readings directly over Bluetooth. The iPhone controls switching between devices; the Watch displays readings and saves them for synchronisation back to the phone.
 
-The add-on reuses the existing Watch graph and complications. Imported readings use the phone's existing processing and configured uploads; newly current readings also trigger its normal alerts and sharing. Most implementation lives in this directory, with documented hooks into the original app. No Loop changes are required.
+The add-on reuses the existing Watch graph and complications. Imported readings use the phone's existing processing and configured uploads; newly current readings also trigger its normal alerts and sharing. Most implementation lives in this directory, with documented hooks into the original app.
 
 ## Getting started
 

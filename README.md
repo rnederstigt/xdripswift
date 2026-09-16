@@ -2,7 +2,7 @@
 
 ## Experimental Direct Libre 2 for Apple Watch
 
-This branch adds phone-controlled switching of a working Libre 2 connection between iPhone and Apple Watch, saved Watch readings with phone synchronisation, and optional location-based background collection. Most implementation lives in the add-on directory; no Loop changes are required. Continuous collection is not guaranteed, and Watch alarms and sensor backfill are not implemented.
+This branch adds phone-controlled switching of a working Libre 2 connection between iPhone and Apple Watch, saved Watch readings with phone synchronisation, and optional location-based background collection. Most implementation lives in the add-on directory. Continuous collection is not guaranteed, and Watch alarms and sensor backfill are not implemented.
 
 See the [Direct Libre 2 guide](<xDrip Watch Direct Libre2 AddOn/README.md>) for setup, controls, limitations and contributor documentation.
 
