@@ -1,14 +1,10 @@
 # xDrip4iOS
 
-## Experimental Direct Libre 2 Watch connection
+## Experimental Direct Libre 2 for Apple Watch
 
-This branch adds a phone-controlled prototype with optional experimental background collection using location. Start with valid Libre BLE readings on iPhone, then use **Settings → Advanced Settings → Direct Libre (Experimental)** to switch to Watch or return. Direct readings synchronize back to the phone; the Watch shows a green/grey antenna beside their age.
+This branch adds phone-controlled switching of a working Libre 2 connection between iPhone and Apple Watch, saved Watch readings with phone synchronisation, and optional location-based background collection. Most implementation lives in the add-on directory; no Loop changes are required. Continuous collection is not guaranteed, and Watch alarms and sensor backfill are not implemented.
 
-See the [add-on guide](<xDrip Watch Direct Libre2 AddOn/README.md>) for setup, NFC recovery, limitations, validation and the complete integration/audit map. Continuous collection is not guaranteed; Watch alarms and sensor backfill are not implemented.
-
-Enable **Background collection using location — Experimental** on the Direct Libre page with both apps open. After switching sensor ownership to Watch, open xDrip there and allow location access. This option defaults to off, uses additional battery and saves no coordinates. Three accuracy buttons—**100 m / 1 km / 3 km**—let you select and save the requested precision; 100 m remains the default. Coarser accuracy may reduce battery use, but background collection must still be tested. Temporary sensor disconnections leave location running; returning to iPhone stops it. A new session requires Watch xDrip to be opened again.
-
-The phone page shows the Watch’s last reported location status; reopen it to refresh when the Watch is reachable. “Location updates received” confirms a location callback, not uninterrupted glucose collection. The Watch antenna still indicates only the sensor’s Bluetooth connection. Verify background operation by checking that new glucose timestamps reach the phone while Watch xDrip is off-screen. See [background-mode setup and limitations](<xDrip Watch Direct Libre2 AddOn/README.md#optional-background-location>).
+See the [Direct Libre 2 guide](<xDrip Watch Direct Libre2 AddOn/README.md>) for setup, controls, limitations and contributor documentation.
 
 ---
 
