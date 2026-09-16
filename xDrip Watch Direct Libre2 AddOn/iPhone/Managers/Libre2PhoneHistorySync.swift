@@ -7,11 +7,22 @@ import WatchConnectivity
 final class Libre2PhoneHistorySync {
     static let didImport = Notification.Name("Libre2PhoneHistoryDidImport")
 
+    /// Capture at the WCSession delegate boundary, before dispatching to main. No journal
+    /// or UIKit access on that callback thread; the receive path records both timestamps.
+    struct Receipt {
+        let route: String
+        var date = Date()
+        var uptime = ProcessInfo.processInfo.systemUptime
+    }
+
     private let coreDataManager: CoreDataManager
     private let session: WCSession
     private var registry: Libre2HistoryRegistry?
     private var pending: [(Libre2HistoryBatch, (([String: Any]) -> Void)?)] = []
+    private var pendingLatest: (Libre2HistoryBatch, (([String: Any]) -> Void)?)?
     private var isImporting = false
+    private var importingBatch: Libre2HistoryBatch?
+    private var importResponses: [(batch: Libre2HistoryBatch, reply: (([String: Any]) -> Void)?, isLatest: Bool)] = []
     private var historyUpdate = Libre2PhoneHistoryUpdate()
     private let beforeStoreSave: (@Sendable () throws -> Void)?
 
@@ -40,11 +51,46 @@ final class Libre2PhoneHistorySync {
     }
 
     @discardableResult
-    func receive(_ dictionary: [String: Any], reply: (([String: Any]) -> Void)? = nil) -> Bool {
+    func receive(_ dictionary: [String: Any], receipt: Receipt? = nil, reply: (([String: Any]) -> Void)? = nil) -> Bool {
         guard dictionary[Libre2HistoryBatch.key] != nil else { return false }
+        let handlingDate = Date()
+        let handlingUptime = ProcessInfo.processInfo.systemUptime
         do {
             let batch = try Libre2HistoryBatch.decode(dictionary)
-            pending.append((batch, reply))
+            if Libre2ActivityLog.shared.isTracingEnabled, let receipt,
+                let reading = batch.readings.max(by: { $0.date < $1.date }) {
+                let details = "batch=\(batch.id.uuidString.prefix(8)) route=\(receipt.route)"
+                Libre2ActivityLog.shared.recordDelivery("Phone callback entered", reading: reading,
+                    details: details, now: receipt.date)
+                let wait = max(0, handlingUptime - receipt.uptime) * 1_000
+                Libre2ActivityLog.shared.recordDelivery("Phone main handler started", reading: reading,
+                    details: "\(details) mainQueueWaitMs=\(String(format: "%.1f", wait))", now: handlingDate)
+            }
+            recordDelivery(dictionary[Libre2HistoryBatch.latestKey] as? Bool == true
+                ? "Phone received latest" : "Phone received history", batch: batch)
+            // Context, live latest and history often arrive together. Share the in-flight
+            // save only for identical contents; every history batch still gets its own reply.
+            if importingBatch?.readings == batch.readings {
+                importResponses.append((batch, reply, dictionary[Libre2HistoryBatch.latestKey] as? Bool == true))
+                recordDelivery("Phone joined current import", batch: batch)
+                return true
+            }
+            if dictionary[Libre2HistoryBatch.latestKey] as? Bool == true {
+                // Coalesce live messages while an import is running. Supersession is not
+                // a save acknowledgement; all measurements remain in Watch history.
+                if let waiting = pendingLatest, waiting.0.readings[0].date >= batch.readings[0].date {
+                    recordDelivery("Phone latest superseded", batch: batch)
+                    reply?(["superseded": true])
+                    return true
+                }
+                if let waiting = pendingLatest {
+                    recordDelivery("Phone latest superseded", batch: waiting.0)
+                    waiting.1?(["superseded": true])
+                }
+                pendingLatest = (batch, reply)
+            } else {
+                pending.append((batch, reply))
+            }
             importNext()
         } catch {
             report(error)
@@ -54,19 +100,27 @@ final class Libre2PhoneHistorySync {
     }
 
     private func importNext() {
-        guard !isImporting, !pending.isEmpty else { return }
+        guard !isImporting, pendingLatest != nil || !pending.isEmpty else { return }
         isImporting = true
-        let (batch, reply) = pending.removeFirst()
+        // Finish the current save, then prefer the freshest live value to waiting history.
+        let isLatest = pendingLatest != nil
+        let (batch, reply) = pendingLatest ?? pending.removeFirst()
+        pendingLatest = nil
+        importingBatch = batch
+        importResponses = [(batch, reply, isLatest)]
         Task { @MainActor in
             defer {
                 isImporting = false
                 importNext()
             }
             do {
+                recordDelivery("Phone import started", batch: batch)
                 let result = try await importReadings(batch)
-                let acknowledgement = try Libre2HistoryAcknowledgement(batch: batch).dictionary
-                respond(acknowledgement, reply: reply)
-                Libre2ActivityLog.shared.record("Saved \(result.inserted) Direct Watch readings on iPhone.")
+                recordDelivery("Phone saved (\(result.inserted) inserted)", batch: batch)
+                finishImport { try Libre2HistoryAcknowledgement(batch: $0).dictionary }
+                if result.inserted > 0 {
+                    Libre2ActivityLog.shared.record("Saved \(result.inserted) Direct Watch readings on iPhone.")
+                }
                 // Also publish after a duplicate: an earlier attempt may have failed at the
                 // final store save. Only a new, current value may refresh phone alerts.
                 let currentDate = historyUpdate.consume(currentReadingDate(in: batch),
@@ -77,15 +131,31 @@ final class Libre2PhoneHistorySync {
                 info[Libre2PhoneHistoryUpdate.changedSensorIDsKey] = Array(result.changedSensorIDs)
                 NotificationCenter.default.post(name: Self.didImport, object: self, userInfo: info)
             } catch let rejection as Libre2HistoryRejection {
-                do {
-                    respond(try rejection.dictionary, reply: reply)
-                    Libre2ActivityLog.shared.record(
-                        "History sync: \(rejection.readingIDs.count) unmatched readings remain on Watch; other readings can continue uploading.")
-                } catch { report(error) }
+                recordDelivery("Phone sensor mapping rejected", batch: batch)
+                finishImport {
+                    try Libre2HistoryRejection(batchID: $0.id, readingIDs: rejection.readingIDs).dictionary
+                }
+                Libre2ActivityLog.shared.record(
+                    "History sync: \(rejection.readingIDs.count) unmatched readings remain on Watch; other readings can continue uploading.")
             } catch {
+                recordDelivery("Phone import failed: \(error.localizedDescription)", batch: batch)
                 report(error)
-                reply?(["error": error.localizedDescription])
+                finishImport { _ in throw error }
                 // No success acknowledgement. The Watch retains and retries the batch.
+            }
+        }
+    }
+
+    private func finishImport(_ response: (Libre2HistoryBatch) throws -> [String: Any]) {
+        let responses = importResponses
+        importResponses = []
+        importingBatch = nil
+        for delivery in responses {
+            do {
+                let dictionary = try response(delivery.batch)
+                if !delivery.isLatest || delivery.reply != nil { respond(dictionary, reply: delivery.reply) }
+            } catch {
+                delivery.reply?(["error": error.localizedDescription])
             }
         }
     }
@@ -96,6 +166,13 @@ final class Libre2PhoneHistorySync {
         } else if session.activationState == .activated {
             session.transferUserInfo(dictionary)
         }
+    }
+
+    private func recordDelivery(_ event: String, batch: Libre2HistoryBatch) {
+        guard Libre2ActivityLog.shared.isTracingEnabled,
+            let reading = batch.readings.max(by: { $0.date < $1.date }) else { return }
+        Libre2ActivityLog.shared.recordDelivery(event, reading: reading,
+            details: "batch=\(batch.id.uuidString.prefix(8)) count=\(batch.readings.count)")
     }
 
     @MainActor

@@ -23,6 +23,9 @@ struct Libre2HistoryReading: Codable, Equatable {
 
 struct Libre2HistoryBatch: Codable, Equatable {
     static let key = "libre2HistoryBatch"
+    // A single-reading priority message uses the same validation and import format.
+    // Its reply never acknowledges the Watch's durable history batch.
+    static let latestKey = "libre2LatestReading"
     static let maximumReadings = 120
     let version: Int
     let id: UUID
@@ -43,12 +46,26 @@ struct Libre2HistoryBatch: Codable, Equatable {
 
     var dictionary: [String: Any] { get throws { [Self.key: try JSONEncoder().encode(self)] } }
 
+    var latestDictionary: [String: Any] {
+        get throws {
+            guard readings.count == 1 else { throw Libre2HistoryError.invalidBatch }
+            var message = try dictionary
+            message[Self.latestKey] = true
+            return message
+        }
+    }
+
     static func decode(_ dictionary: [String: Any]) throws -> Self {
         guard let data = dictionary[key] as? Data, data.count <= 100_000 else {
             throw Libre2HistoryError.invalidBatch
         }
         let batch = try JSONDecoder().decode(Self.self, from: data)
         try batch.validate()
+        if dictionary[latestKey] != nil {
+            guard dictionary[latestKey] as? Bool == true, batch.readings.count == 1 else {
+                throw Libre2HistoryError.invalidBatch
+            }
+        }
         return batch
     }
 }

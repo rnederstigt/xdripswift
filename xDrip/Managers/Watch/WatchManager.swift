@@ -80,6 +80,7 @@ final class WatchManager: NSObject, ObservableObject, @unchecked Sendable {
         }
 
         if WCSession.isSupported() {
+            Libre2LifecycleDiagnostics.recordSession("Phone WatchManager initialized", session: session)
             session.delegate = self
             activateSessionIfNeeded()
         }
@@ -381,21 +382,25 @@ final class WatchManager: NSObject, ObservableObject, @unchecked Sendable {
 
 extension WatchManager: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
+        let receipt = Libre2PhoneHistorySync.Receipt(route: "message")
         DispatchQueue.main.async {
-            guard !self.directLibreHistory.receive(message, reply: replyHandler) else { return }
+            guard !self.directLibreHistory.receive(message, receipt: receipt, reply: replyHandler) else { return }
             Libre2PhoneHandoff.receiveWatchMessage(message, reply: replyHandler)
         }
     }
 
-    func sessionDidBecomeInactive(_: WCSession) {
+    func sessionDidBecomeInactive(_ session: WCSession) {
+        Libre2LifecycleDiagnostics.recordSession("WC became inactive", session: session)
         DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
     }
 
-    func sessionWatchStateDidChange(_: WCSession) {
+    func sessionWatchStateDidChange(_ session: WCSession) {
+        Libre2LifecycleDiagnostics.recordSession("WC Watch state changed", session: session)
         DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
     }
 
     func sessionDidDeactivate(_: WCSession) {
+        Libre2LifecycleDiagnostics.recordSession("WC deactivated", session: session)
         DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
         session = WCSession.default
         session.delegate = self
@@ -403,6 +408,8 @@ extension WatchManager: WCSessionDelegate {
     }
 
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        Libre2LifecycleDiagnostics.recordSession("WC activation completed", session: session,
+            details: "result=\(activationState.rawValue) error=\(error != nil)")
         DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
         completeSessionActivationRequest()
 
@@ -456,12 +463,20 @@ extension WatchManager: WCSessionDelegate {
     }
 
     func session(_: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
-        DispatchQueue.main.async { self.directLibreHistory.receive(userInfo) }
+        let receipt = Libre2PhoneHistorySync.Receipt(route: "userInfo")
+        DispatchQueue.main.async { self.directLibreHistory.receive(userInfo, receipt: receipt) }
+    }
+
+    func session(_: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        guard applicationContext[Libre2HistoryBatch.latestKey] as? Bool == true else { return }
+        let receipt = Libre2PhoneHistorySync.Receipt(route: "applicationContext")
+        DispatchQueue.main.async { self.directLibreHistory.receive(applicationContext, receipt: receipt) }
     }
 
     func session(_: WCSession, didReceiveMessageData _: Data) {}
 
     func sessionReachabilityDidChange(_ session: WCSession) {
+        Libre2LifecycleDiagnostics.recordSession("WC reachability changed", session: session)
         DispatchQueue.main.async { Libre2PhoneHandoff.shared.recordReachability() }
         if session.isReachable {
             DispatchQueue.main.async {

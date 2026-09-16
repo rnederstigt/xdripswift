@@ -183,12 +183,7 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
                 DispatchQueue.main.async {
                     Libre2PhoneHandoff.shared.readingStatus = Libre2PhoneReadingStatus()
                     Libre2PhoneHandoff.shared.status = "Direct Libre reset started. Scan the sensor you want to use."
-                    if let old = previous.session, WCSession.default.activationState == .activated,
-                       let message = try? Libre2HandoffMessage(kind: .revoke, session: old).dictionary {
-                        // An unavailable Watch must not block a new sensor. A queued, session-bound
-                        // revoke stops its retired collector when WatchConnectivity can deliver it.
-                        WCSession.default.transferUserInfo(message)
-                    }
+                    Libre2PhoneHandoff.shared.notifyWatchOfNFCReset(previousSession: previous.session)
                 }
             }
             return true

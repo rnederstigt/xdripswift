@@ -429,11 +429,11 @@ final class Libre2HandoffTests: XCTestCase {
         log.record("One event")
         log.record("One event")
         XCTAssertEqual(log.entries.count, 1)
-        for index in 0..<100 { log.record("Event \(index)") }
+        for index in 0..<(Libre2ActivityLog.maximumEntries + 20) { log.record("Event \(index)") }
         XCTAssertEqual(log.entries.count, Libre2ActivityLog.maximumEntries)
         let restored = Libre2ActivityLog(defaults: defaults)
         XCTAssertEqual(restored.entries.first?.message, "Event 20")
-        XCTAssertEqual(restored.entries.last?.message, "Event 99")
+        XCTAssertEqual(restored.entries.last?.message, "Event \(Libre2ActivityLog.maximumEntries + 19)")
         restored.clear()
         XCTAssertTrue(Libre2ActivityLog(defaults: defaults).entries.isEmpty)
         XCTAssertEqual(store.snapshot.owner, .watch)
@@ -550,6 +550,64 @@ final class Libre2HandoffTests: XCTestCase {
     }
 
     // MARK: - Ordinary NFC hard reset
+
+    func testNFCRetirementSurvivesLostDeliveryRepeatedScanAndPhoneRestart() throws {
+        let old = session()
+        var phoneDisk = Libre2OwnershipRecord(owner: .watch, session: old)
+        let phone = Libre2SessionStore(record: phoneDisk) { phoneDisk = $0 }
+        let watch = Libre2SessionStore(record: phoneDisk) { _ in }
+        try phone.beginPhoneNFC(resetUnlockCode: 1000)
+        try phone.confirmPhoneNFCReset(unlockCode: 1000)
+        try phone.finishPhoneNFCReset(unlockCode: 1000, sensorUID: old.sensorUID)
+        // No revocation reaches the Watch, and the next scan has no session payload to send.
+        XCTAssertNil(phone.snapshot.session)
+        try phone.beginPhoneNFC(resetUnlockCode: 2000)
+        phone.endPhoneNFC()
+        let restored = try JSONDecoder().decode(Libre2OwnershipRecord.self,
+            from: JSONEncoder().encode(phoneDisk))
+        let dictionary: [String: Any] = [Libre2HandoffMessage.retiredIDsKey: restored.retiredIDs.map(\.uuidString)]
+        let ids = try XCTUnwrap(Libre2HandoffMessage.retiredIDs(from: dictionary))
+        XCTAssertEqual(try watch.retireOnWatch(ids), old)
+        XCTAssertEqual(watch.snapshot.owner, .releasingWatch)
+        XCTAssertFalse(watch.snapshot.owner.allowsWatchConnection)
+        XCTAssertThrowsError(try watch.reserveCounter(id: old.id))
+        try watch.finishReturnOnWatch(id: old.id)
+        XCTAssertNil(try watch.retireOnWatch(ids))
+        XCTAssertEqual(watch.snapshot.owner, .phone)
+    }
+
+    func testRetirementDoesNotStopNewerHandoffAndPersistsUnseenIDs() throws {
+        let old = session()
+        let current = session()
+        var disk = Libre2OwnershipRecord(owner: .watch, session: current)
+        let watch = Libre2SessionStore(record: disk) { disk = $0 }
+        XCTAssertNil(try watch.retireOnWatch([old.id]))
+        XCTAssertEqual(watch.snapshot.session, current)
+        XCTAssertEqual(watch.snapshot.owner, .watch)
+        XCTAssertTrue(disk.retiredIDs.contains(old.id))
+        XCTAssertEqual(try watch.retireOnWatch([old.id, current.id]), current)
+        XCTAssertFalse(watch.snapshot.owner.allowsWatchConnection)
+    }
+
+    func testRetirementMustPersistBeforeDisconnectPermission() throws {
+        let old = session()
+        let watch = Libre2SessionStore(record: Libre2OwnershipRecord(owner: .watch, session: old)) { _ in
+            throw Libre2HandoffError.persistence
+        }
+        XCTAssertThrowsError(try watch.retireOnWatch([old.id]))
+        XCTAssertEqual(watch.snapshot.owner, .failed)
+        XCTAssertEqual(watch.snapshot.session, old)
+        XCTAssertThrowsError(try watch.reserveCounter(id: old.id))
+    }
+
+    func testRetirementMessageRejectsMalformedIDsWithoutPartiallyAcceptingThem() throws {
+        let id = UUID()
+        XCTAssertNil(try Libre2HandoffMessage.retiredIDs(from: [:]))
+        XCTAssertEqual(try Libre2HandoffMessage.retiredIDs(from: [Libre2HandoffMessage.retiredIDsKey: [String]()]), [])
+        for value: Any in [true, id.uuidString, [id.uuidString, "invalid"]] {
+            XCTAssertThrowsError(try Libre2HandoffMessage.retiredIDs(from: [Libre2HandoffMessage.retiredIDsKey: value]))
+        }
+    }
 
     func testQueuedRevokeOvertakingPrepareRetiresTheUnseenWatchSession() throws {
         let old = session()

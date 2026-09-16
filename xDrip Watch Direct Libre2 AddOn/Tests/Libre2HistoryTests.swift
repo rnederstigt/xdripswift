@@ -11,6 +11,75 @@ final class Libre2HistoryTests: XCTestCase {
                              date: now.addingTimeInterval(Double(Int(minute) - 100) * 60), glucose: glucose)
     }
 
+    func testBackgroundReservationSurvivesRestartWithoutAcknowledgingReadings() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("queue.json")
+        let queue = try Libre2HistoryQueue(url: url)
+        try queue.append(reading())
+        let batch = try XCTUnwrap(queue.nextBatch())
+        XCTAssertTrue(try queue.reserveBackgroundTransfer(batchID: batch.id, at: now))
+        let restarted = try Libre2HistoryQueue(url: url)
+        XCTAssertEqual(restarted.state.pending, [reading()])
+        XCTAssertEqual(restarted.state.batch, batch)
+        XCTAssertFalse(restarted.canRetryBackgroundTransfer(at: now.addingTimeInterval(299)))
+        XCTAssertTrue(restarted.canRetryBackgroundTransfer(at: now.addingTimeInterval(300)))
+    }
+
+    func testBackgroundReservationFailureAndStaleBatchCannotChangeJournal() throws {
+        var fail = false
+        let queue = Libre2HistoryQueue { _ in if fail { throw Libre2HistoryError.unavailable } }
+        try queue.append(reading())
+        let batch = try XCTUnwrap(queue.nextBatch())
+        let before = queue.state
+        XCTAssertThrowsError(try queue.reserveBackgroundTransfer(batchID: UUID(), at: now))
+        fail = true
+        XCTAssertThrowsError(try queue.reserveBackgroundTransfer(batchID: batch.id, at: now))
+        XCTAssertEqual(queue.state, before)
+        fail = false
+        XCTAssertTrue(try queue.reserveBackgroundTransfer(batchID: batch.id, at: now))
+        fail = true
+        XCTAssertThrowsError(try queue.acknowledge(Libre2HistoryAcknowledgement(batch: batch)))
+        XCTAssertEqual(queue.state.lastBackgroundSubmission, now)
+        XCTAssertEqual(queue.state.pending, before.pending)
+    }
+
+    func testResolvingBatchReleasesReservationButStaleResponsesCannotReleaseTheNextOne() throws {
+        for reject in [false, true] {
+            let queue = Libre2HistoryQueue { _ in }
+            try queue.append(reading())
+            let first = try XCTUnwrap(queue.nextBatch())
+            XCTAssertTrue(try queue.reserveBackgroundTransfer(batchID: first.id, at: now))
+            try queue.append(reading(101))
+            if reject {
+                try queue.retainUnresolved(.init(batchID: first.id, readingIDs: first.readings.map(\.id)))
+            } else {
+                try queue.acknowledge(Libre2HistoryAcknowledgement(batch: first))
+            }
+            XCTAssertNil(queue.state.lastBackgroundSubmission)
+            let next = try XCTUnwrap(queue.nextBatch())
+            XCTAssertTrue(try queue.reserveBackgroundTransfer(batchID: next.id, at: now))
+            XCTAssertThrowsError(try queue.acknowledge(Libre2HistoryAcknowledgement(batch: first)))
+            XCTAssertEqual(queue.state.batch, next)
+            XCTAssertEqual(queue.state.lastBackgroundSubmission, now)
+        }
+    }
+
+    func testOldJournalAndClockCorrectionDoNotStrandBackgroundRetries() throws {
+        let queue = Libre2HistoryQueue { _ in }
+        try queue.append(reading())
+        let batch = try XCTUnwrap(queue.nextBatch())
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(queue.state)) as? [String: Any])
+        legacy.removeValue(forKey: "lastBackgroundSubmission")
+        let restored = Libre2HistoryQueue(state: try JSONDecoder().decode(Libre2HistoryQueue.State.self,
+            from: JSONSerialization.data(withJSONObject: legacy))) { _ in }
+        XCTAssertTrue(restored.canRetryBackgroundTransfer(at: now))
+        XCTAssertTrue(try restored.reserveBackgroundTransfer(batchID: batch.id, at: now))
+        let corrected = now.addingTimeInterval(-3600)
+        XCTAssertTrue(try restored.reserveBackgroundTransfer(batchID: batch.id, at: corrected))
+        XCTAssertFalse(restored.canRetryBackgroundTransfer(at: corrected.addingTimeInterval(1)))
+    }
+
     func testBatchRoundTripContainsConvertedValueWithoutDisplayClamping() throws {
         let batch = Libre2HistoryBatch(readings: [reading(glucose: 650)])
         XCTAssertEqual(try Libre2HistoryBatch.decode(batch.dictionary), batch)
@@ -31,6 +100,118 @@ final class Libre2HistoryTests: XCTestCase {
         let future = Libre2HistoryReading(sessionID: sessionID, sensorUID: uid, sensorMinute: 100,
                                          date: Date().addingTimeInterval(600), glucose: 100)
         XCTAssertThrowsError(try future.validate())
+    }
+
+    func testLatestMessageUsesTheExistingValidatedBatchFormat() throws {
+        let batch = Libre2HistoryBatch(readings: [reading()])
+        let message = try batch.latestDictionary
+        XCTAssertEqual(message[Libre2HistoryBatch.latestKey] as? Bool, true)
+        XCTAssertEqual(try Libre2HistoryBatch.decode(message), batch)
+        XCTAssertThrowsError(try Libre2HistoryBatch(readings: [reading(), reading(101)]).latestDictionary)
+        var invalid = try Libre2HistoryBatch(readings: [reading(), reading(101)]).dictionary
+        invalid[Libre2HistoryBatch.latestKey] = true
+        XCTAssertThrowsError(try Libre2HistoryBatch.decode(invalid))
+        invalid = try batch.dictionary
+        invalid[Libre2HistoryBatch.latestKey] = "true"
+        XCTAssertThrowsError(try Libre2HistoryBatch.decode(invalid))
+    }
+
+    func testLatestAcknowledgementCannotRemoveDurableHistory() throws {
+        let queue = Libre2HistoryQueue { _ in }
+        try queue.append(reading())
+        let history = try XCTUnwrap(queue.nextBatch())
+        let latest = Libre2HistoryBatch(readings: history.readings)
+        XCTAssertThrowsError(try queue.acknowledge(Libre2HistoryAcknowledgement(batch: latest)))
+        XCTAssertEqual(queue.state.batch, history)
+        XCTAssertEqual(queue.state.pending, history.readings)
+    }
+
+    func testActivitySnapshotIsBoundedReadOnlyAndSurvivesRestart() throws {
+        let suite = "Libre2ActivityTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let log = Libre2ActivityLog(defaults: defaults)
+        for index in 0..<(Libre2ActivityLog.maximumEntries + 20) { log.record("Event \(index)") }
+        XCTAssertEqual(log.entries.count, Libre2ActivityLog.maximumEntries)
+        let before = defaults.dictionaryRepresentation()
+        var reply: [String: Any] = [:]
+        XCTAssertTrue(log.receive([Libre2ActivityLog.requestKey: true]) { reply = $0 })
+        let entries = try Libre2ActivityLog.decodeSnapshot(reply)
+        XCTAssertEqual(entries.map(\.message), log.entries.map(\.message))
+        XCTAssertEqual(entries.first?.message, "Event 20")
+        XCTAssertEqual(NSDictionary(dictionary: defaults.dictionaryRepresentation()), NSDictionary(dictionary: before))
+        XCTAssertEqual(Libre2ActivityLog(defaults: defaults).entries.map(\.id), entries.map(\.id))
+        XCTAssertFalse(log.receive([:]) { _ in XCTFail("Unrelated message was intercepted") })
+        XCTAssertTrue(log.receive([Libre2ActivityLog.requestKey: "invalid"]) { XCTAssertNotNil($0["error"]) })
+        XCTAssertThrowsError(try Libre2ActivityLog.decodeSnapshot([:]))
+    }
+
+    func testActivitySnapshotLimitsLargeMessagesWithoutTruncatingTheLocalLog() throws {
+        let suite = "Libre2ActivityTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let log = Libre2ActivityLog(defaults: defaults)
+        for index in 0..<Libre2ActivityLog.maximumEntries { log.record("\(index): " + String(repeating: "x", count: 2_000)) }
+        var reply: [String: Any] = [:]
+        XCTAssertTrue(log.receive([Libre2ActivityLog.requestKey: true]) { reply = $0 })
+        let entries = try Libre2ActivityLog.decodeSnapshot(reply)
+        XCTAssertLessThan(entries.count, Libre2ActivityLog.maximumEntries)
+        XCTAssertEqual(entries.last?.id, log.entries.last?.id)
+        XCTAssertEqual(log.entries.count, Libre2ActivityLog.maximumEntries)
+    }
+
+    func testDeliveryReportCorrelatesMeasurementsWithoutGlucoseOrCredentials() throws {
+        let suite = "Libre2ActivityTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let disabled = Libre2ActivityLog(defaults: defaults, shouldRecord: { false })
+        disabled.recordDelivery("Watch collected", reading: reading())
+        XCTAssertTrue(disabled.entries.isEmpty)
+        let log = Libre2ActivityLog(defaults: defaults)
+        log.isTracingEnabled = true
+        log.recordDelivery("Watch collected", reading: reading(glucose: 650), details: "reachable=false")
+        let entry = try XCTUnwrap(log.entries.first)
+        XCTAssertTrue(entry.message.contains("sample=") && entry.message.contains("minute=100"))
+        XCTAssertTrue(entry.message.contains("handoff=\(sessionID.uuidString.prefix(8))"))
+        XCTAssertFalse(entry.message.contains("glucose") || entry.message.contains("unlock"))
+        XCTAssertFalse(entry.message.contains(reading().sensorKey))
+        let later = Libre2ActivityLog.Entry(id: UUID(), date: entry.date.addingTimeInterval(30), message: "Phone saved")
+        let report = Libre2ActivityLog.report(phone: [later], watch: [entry], capturedAt: later.date)
+        XCTAssertTrue(report.contains("(UTC)") && report.contains("Watch snapshot:"))
+        let watchRange = try XCTUnwrap(report.range(of: "[Watch]"))
+        let phoneRange = try XCTUnwrap(report.range(of: "[iPhone]"))
+        XCTAssertLessThan(watchRange.lowerBound, phoneRange.lowerBound)
+    }
+
+    func testDetailedTracingIsOptInPersistedAndConfirmedByWatch() throws {
+        let suite = "Libre2ActivityTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let log = Libre2ActivityLog(defaults: defaults)
+        XCTAssertFalse(log.isTracingEnabled)
+        var formatted = false
+        func detail() -> String { formatted = true; return "Trace detail" }
+        log.recordTrace(detail())
+        log.recordDelivery("Watch collected", reading: reading())
+        XCTAssertFalse(formatted)
+        XCTAssertTrue(log.entries.isEmpty)
+        log.record("Connected")
+        XCTAssertEqual(log.entries.count, 1)
+        var reply: [String: Any] = [:]
+        log.receive([Libre2ActivityLog.requestKey: true, Libre2ActivityLog.tracingKey: true]) { reply = $0 }
+        XCTAssertEqual(reply[Libre2ActivityLog.tracingKey] as? Bool, true)
+        XCTAssertTrue(Libre2ActivityLog(defaults: defaults).isTracingEnabled)
+        log.recordTrace(detail())
+        XCTAssertTrue(formatted)
+        XCTAssertEqual(log.entries.last?.message, "Trace detail")
+        log.receive([Libre2ActivityLog.requestKey: true, Libre2ActivityLog.tracingKey: "invalid"]) { reply = $0 }
+        XCTAssertNotNil(reply["error"])
+        XCTAssertTrue(log.isTracingEnabled)
+        log.receive([Libre2ActivityLog.requestKey: true, Libre2ActivityLog.tracingKey: false]) { reply = $0 }
+        XCTAssertEqual(reply[Libre2ActivityLog.tracingKey] as? Bool, false)
+        let count = log.entries.count
+        log.recordDelivery("Phone received", reading: reading())
+        XCTAssertEqual(log.entries.count, count)
     }
 
     func testAppendFailureDoesNotAdvanceMinuteOrLoseRetry() throws {

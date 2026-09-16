@@ -28,10 +28,13 @@ final class CLLocationManager {
     func stopUpdatingLocation() { stops += 1 }
     func requestWhenInUseAuthorization() { requests += 1 }
 }
-final class WKExtension {
+enum WKExtension {
+    static let applicationDidBecomeActiveNotification = WKApplication.applicationDidBecomeActiveNotification
+}
+final class WKApplication {
     enum State { case active, inactive, background }
-    static let instance = WKExtension()
-    static func shared() -> WKExtension { instance }
+    static let instance = WKApplication()
+    static func shared() -> WKApplication { instance }
     static let applicationDidBecomeActiveNotification = Notification.Name("TestWatchActive")
     var applicationState = State.active
 }
@@ -55,7 +58,7 @@ struct LocationTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         CLLocationManager.instances = []
         Libre2SessionStore.shared.snapshot.owner = .phone
-        WKExtension.shared().applicationState = .active
+        WKApplication.shared().applicationState = .active
         Libre2ActivityLog.shared.entries = []
         try test(Libre2WatchLocationSession(defaults: defaults), defaults)
         print("PASS: \(name)")
@@ -74,8 +77,8 @@ struct LocationTests {
     }
 
     static func activate() {
-        WKExtension.shared().applicationState = .active
-        NotificationCenter.default.post(name: WKExtension.applicationDidBecomeActiveNotification, object: nil)
+        WKApplication.shared().applicationState = .active
+        NotificationCenter.default.post(name: WKApplication.applicationDidBecomeActiveNotification, object: nil)
     }
 
     static func authorize(_ helper: Libre2WatchLocationSession) -> CLLocationManager {
@@ -105,7 +108,7 @@ struct LocationTests {
             precondition(Libre2WatchPreferences(defaults: defaults).backgroundLocationEnabled)
         }
         try check("background activation waits for foreground and requests permission only once") { helper, _ in
-            WKExtension.shared().applicationState = .background
+            WKApplication.shared().applicationState = .background
             own(.watch)
             _ = try send(.setEnabled(true), to: helper)
             precondition(CLLocationManager.instances.isEmpty)
@@ -120,7 +123,7 @@ struct LocationTests {
             own(.watch)
             _ = try send(.setEnabled(true), to: helper)
             let manager = authorize(helper)
-            WKExtension.shared().applicationState = .background
+            WKApplication.shared().applicationState = .background
             own(.watch)
             _ = try send(.inspect, to: helper)
             helper.locationManager(manager, didFailWithError: CLError(code: .locationUnknown))
@@ -134,7 +137,7 @@ struct LocationTests {
             own(.watch)
             _ = try send(.setEnabled(true), to: helper)
             let manager = authorize(helper)
-            WKExtension.shared().applicationState = .background
+            WKApplication.shared().applicationState = .background
             _ = try send(.setEnabled(false), to: helper)
             helper.locationManagerDidChangeAuthorization(manager)
             helper.locationManager(manager, didUpdateLocations: [CLLocation()])
@@ -158,7 +161,7 @@ struct LocationTests {
             manager.authorizationStatus = .denied
             helper.locationManagerDidChangeAuthorization(manager)
             precondition(manager.stops == 1)
-            WKExtension.shared().applicationState = .background
+            WKApplication.shared().applicationState = .background
             manager.authorizationStatus = .authorizedWhenInUse
             helper.locationManagerDidChangeAuthorization(manager)
             precondition(manager.starts == 1)
@@ -171,7 +174,7 @@ struct LocationTests {
             _ = try send(.setEnabled(true), to: helper)
             let manager = authorize(helper)
             precondition(manager.desiredAccuracy == kCLLocationAccuracyHundredMeters)
-            WKExtension.shared().applicationState = .background
+            WKApplication.shared().applicationState = .background
             for accuracy in Libre2LocationRequest.Accuracy.allCases.reversed() {
                 for _ in 0..<2 {
                     let reply = try send(.setAccuracy(accuracy), to: helper)
@@ -186,7 +189,7 @@ struct LocationTests {
             precondition(Libre2SessionStore.shared.snapshot.owner == .watch)
         }
         try check("accuracy can be saved while off and is restored before the next foreground start") { helper, defaults in
-            WKExtension.shared().applicationState = .background
+            WKApplication.shared().applicationState = .background
             let reply = try send(.setAccuracy(.threeKilometers), to: helper)
             precondition(reply["enabled"] as? Bool == false && reply["accuracy"] as? Int == 3000)
             precondition(CLLocationManager.instances.isEmpty)
@@ -197,7 +200,7 @@ struct LocationTests {
             _ = try send(.setEnabled(true), to: restored)
             precondition(CLLocationManager.instances.isEmpty)
             // Activate only this helper; the fixture helper represents the previous app instance.
-            WKExtension.shared().applicationState = .active
+            WKApplication.shared().applicationState = .active
             _ = try send(.inspect, to: restored)
             let manager = authorize(restored)
             precondition(manager.desiredAccuracy == 3000 && manager.starts == 1)
@@ -216,7 +219,7 @@ struct LocationTests {
             precondition(manager.desiredAccuracy == 100 && manager.starts == 1 && manager.stops == 0)
         }
         try check("restart restores opt-in but never starts from a background launch") { _, defaults in
-            WKExtension.shared().applicationState = .background
+            WKApplication.shared().applicationState = .background
             Libre2WatchPreferences(defaults: defaults).backgroundLocationEnabled = true
             own(.watch)
             let restored = Libre2WatchLocationSession(defaults: defaults)

@@ -4,9 +4,13 @@ import Foundation
 /// Only the newest actual measurement from each BLE frame is collected; interpolated graph
 /// points are deliberately excluded. This is not a sensor-history/backfill implementation.
 final class Libre2HistoryQueue {
+    // Recovery interval, not a delivery deadline. Collection/activation events drive retries.
+    static let backgroundRetryInterval: TimeInterval = 5 * 60
+
     struct State: Codable, Equatable {
         var pending: [Libre2HistoryReading] = []
         var batch: Libre2HistoryBatch?
+        var lastBackgroundSubmission: Date?
         var lastCollectedMinute: [String: UInt16] = [:]
         var unresolved: [Libre2HistoryReading] = []
 
@@ -16,6 +20,7 @@ final class Libre2HistoryQueue {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             pending = try values.decode([Libre2HistoryReading].self, forKey: .pending)
             batch = try values.decodeIfPresent(Libre2HistoryBatch.self, forKey: .batch)
+            lastBackgroundSubmission = try values.decodeIfPresent(Date.self, forKey: .lastBackgroundSubmission)
             lastCollectedMinute = try values.decode([String: UInt16].self, forKey: .lastCollectedMinute)
             // Existing installations have no unresolved collection; keep their pending batch intact.
             unresolved = try values.decodeIfPresent([Libre2HistoryReading].self, forKey: .unresolved) ?? []
@@ -55,8 +60,27 @@ final class Libre2HistoryQueue {
         guard !state.pending.isEmpty else { return nil }
         var next = state
         next.batch = Libre2HistoryBatch(readings: Array(next.pending.prefix(Libre2HistoryBatch.maximumReadings)))
+        next.lastBackgroundSubmission = nil
         try save(next)
         return next.batch
+    }
+
+    /// Completion of a WC transfer does not acknowledge storage. Keep this reservation
+    /// with the immutable batch so foreground events and restarts cannot flood the phone.
+    func canRetryBackgroundTransfer(at date: Date) -> Bool {
+        guard let submitted = state.lastBackgroundSubmission else { return true }
+        let elapsed = date.timeIntervalSince(submitted)
+        // A wall-clock correction must not strand the journal behind a future timestamp.
+        return !elapsed.isFinite || elapsed < 0 || elapsed >= Self.backgroundRetryInterval
+    }
+
+    func reserveBackgroundTransfer(batchID: UUID, at date: Date) throws -> Bool {
+        guard state.batch?.id == batchID else { throw Libre2HistoryError.staleAcknowledgement }
+        guard canRetryBackgroundTransfer(at: date) else { return false }
+        var next = state
+        next.lastBackgroundSubmission = date
+        try save(next)
+        return true
     }
 
     func acknowledge(_ acknowledgement: Libre2HistoryAcknowledgement) throws {
@@ -67,6 +91,7 @@ final class Libre2HistoryQueue {
         let savedIDs = Set(acknowledgement.readingIDs)
         next.pending.removeAll { savedIDs.contains($0.id) }
         next.batch = nil
+        next.lastBackgroundSubmission = nil
         try save(next)
     }
 
@@ -82,6 +107,7 @@ final class Libre2HistoryQueue {
         next.unresolved.append(contentsOf: next.pending.filter { rejectedIDs.contains($0.id) })
         next.pending.removeAll { rejectedIDs.contains($0.id) }
         next.batch = nil
+        next.lastBackgroundSubmission = nil
         try save(next)
         unresolvedRevision = UUID()
     }

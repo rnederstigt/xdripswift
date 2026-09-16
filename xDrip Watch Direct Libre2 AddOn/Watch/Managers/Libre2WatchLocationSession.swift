@@ -55,7 +55,8 @@ final class Libre2WatchLocationSession: NSObject, CLLocationManagerDelegate {
         }
 
         // Never create/start a new location session from a background WCSession delivery.
-        let isActive = WKExtension.shared().applicationState == .active
+        // This target is a watchOS application, not a legacy WatchKit extension.
+        let isActive = WKApplication.shared().applicationState == .active
         guard isUpdating || isActive else {
             publish(Texts_DirectLibre.locationOpenWatch)
             return

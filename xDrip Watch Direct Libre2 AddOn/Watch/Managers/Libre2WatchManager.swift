@@ -17,6 +17,7 @@ final class Libre2WatchManager {
     private let handoff = Libre2WatchHandoff()
     private let historySync = Libre2WatchHistorySync()
     private let locationSession = Libre2WatchLocationSession()
+    private lazy var notificationTest = Libre2WatchNotificationTest()
 
     init(display: Libre2WatchDisplay) {
         self.display = display
@@ -41,6 +42,12 @@ final class Libre2WatchManager {
 
     func connectionActivated() { historySync.resume() }
 
+    func historyTransferFinished(_ dictionary: [String: Any], error: Error?) {
+        DispatchQueue.main.async {
+            self.historySync.transferFinished(dictionary, error: error)
+        }
+    }
+
     /// Existing host hook also accepts sensor-matching rejections; no extra WCSession route is needed.
     @discardableResult
     func receiveHistoryAcknowledgement(_ dictionary: [String: Any]) -> Bool {
@@ -48,10 +55,22 @@ final class Libre2WatchManager {
     }
 
     func receive(_ dictionary: [String: Any], reply: @escaping ([String: Any]) -> Void) {
-        DispatchQueue.main.async {
+        Libre2WatchConnectivityTasks.shared.receive {
+            if dictionary[Libre2ActivityLog.requestKey] != nil {
+                let entries = Libre2ComplicationDiagnostics.shared.entries.map {
+                    Libre2ActivityLog.Entry(id: $0.id, date: $0.date, message: $0.message)
+                }
+                Libre2ActivityLog.shared.receive(dictionary, additionalEntries: entries, reply: reply)
+                Libre2ComplicationDiagnostics.shared.setEnabled(Libre2ActivityLog.shared.isTracingEnabled
+                    && Libre2SessionStore.shared.snapshot.hasExperimentalState)
+                return
+            }
+            if dictionary[Libre2NotificationTest.requestKey] != nil,
+                self.notificationTest.receive(dictionary, reply: reply) { return }
             if self.locationSession.receive(dictionary, reply: reply) { return }
             if self.historySync.receiveCleanup(dictionary, reply: reply) { return }
-            guard dictionary[Libre2HandoffMessage.key] != nil else { reply([:]); return }
+            guard dictionary[Libre2HandoffMessage.key] != nil
+                || dictionary[Libre2HandoffMessage.retiredIDsKey] != nil else { reply([:]); return }
             self.handoff.receive(dictionary, reply: reply)
         }
     }

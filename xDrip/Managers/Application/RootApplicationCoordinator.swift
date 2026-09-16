@@ -2799,6 +2799,8 @@ extension RootApplicationCoordinator: @preconcurrency CGMTransmitterDelegate {
 extension RootApplicationCoordinator: @preconcurrency UNUserNotificationCenterDelegate {
     // called when notification created while app is in foreground
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        Libre2LifecycleDiagnostics.recordSession("Phone notification will present",
+            details: "missedReading=\(notification.request.identifier == ConstantsNotifications.NotificationIdentifiersForAlerts.missedReadingAlert)")
         if notification.request.identifier == ConstantsNotifications.NotificationIdentifiersForCalibration.initialCalibrationRequest {
             
             // request calibration
@@ -2839,6 +2841,10 @@ extension RootApplicationCoordinator: @preconcurrency UNUserNotificationCenterDe
     
     // called when user clicks a notification
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        Libre2LifecycleDiagnostics.recordSession("Phone notification action",
+            details: "missedReading=\(response.notification.request.identifier == ConstantsNotifications.NotificationIdentifiersForAlerts.missedReadingAlert)"
+                + " dismiss=\(response.actionIdentifier == UNNotificationDismissActionIdentifier)"
+                + " open=\(response.actionIdentifier == UNNotificationDefaultActionIdentifier)")
         // call completionHandler when exiting function
         defer {
             // call completionhandler

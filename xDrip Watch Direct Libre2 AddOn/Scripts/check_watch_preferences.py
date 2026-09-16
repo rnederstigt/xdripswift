@@ -16,7 +16,16 @@ before = subprocess.check_output(['git', 'show', 'e9e616e:' + host_path], cwd=re
 expected = before.replace('restoreDirectLibreUnits()', 'restoreDirectLibrePreferences()').replace(
     'let unitsChanged = receiveDirectLibreUnits(dictionary)', 'let preferencesChanged = receiveDirectLibrePreferences(dictionary)').replace(
     'return unitsChanged', 'return preferencesChanged')
-assert host == expected, 'Host changes exceed the existing preferences hooks'
+# Strip only the separately tested delivery/diagnostic integration; keep comparing the
+# entire remaining host against the original preference hooks.
+compared = host.replace('            recordLibreComplicationCache(complicationSharedUserDefaultsModel, source: directLibre.isDirect ? "direct" : "phone-relay")\n', '')
+compared = compared.replace('''    func session(_: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
+        directLibre.historyTransferFinished(userInfoTransfer.userInfo, error: error)
+    }
+
+''', '')
+compared = compared.replace('Libre2WatchConnectivityTasks.shared.receive {', 'DispatchQueue.main.async {')
+assert compared == expected, 'Host changes exceed the documented preferences/delivery hooks'
 assert host.index('restoreDirectLibrePreferences()') < host.index('directLibre.restore()')
 assert 'processedUpdate = processStatusFromDictionary(dictionary: statusDictionary)' in host
 
@@ -33,6 +42,24 @@ extension Date { func daysAndHoursAgo(appendAgo: Bool) -> String { "recent" } }
 enum Texts_WatchApp { static let lastReading = "Last reading" }
 struct Libre2Sample { let timeStamp: Date; let glucoseLevelRaw: Double }
 protocol Libre2WatchDisplay: AnyObject {}
+final class Libre2ActivityLog {
+    static let shared = Libre2ActivityLog()
+    let isTracingEnabled = false
+    func record(_ message: String) {}
+}
+enum Libre2SessionStore {
+    struct Snapshot { let hasExperimentalState = false }
+    static let shared = Libre2SessionStore.SnapshotStore()
+    struct SnapshotStore { let snapshot = Snapshot() }
+}
+final class Libre2ComplicationDiagnostics {
+    static let shared = Libre2ComplicationDiagnostics()
+    func setEnabled(_ enabled: Bool) {}
+    static func message(_ event: String, value: Double?, sampleDate: Date?, displayValue: String, details: String) -> String { event }
+}
+extension Double {
+    func mgDlToMmolAndToString(mgDl: Bool) -> String { String(self) }
+}
 final class DirectMode {
     var isDirect = true
     func retryConnection() {}

@@ -277,13 +277,19 @@ final class Libre2SessionStore {
     @discardableResult
     func revokeOnWatch(_ session: Libre2WatchSession) throws -> Bool {
         try session.validate()
+        return try retireOnWatch([session.id]) != nil
+    }
+
+    /// Reconcile the phone's durable retirements even after NFC removed its old credentials.
+    /// Only the matching handoff can stop; duplicate delivery after disconnect is a no-op.
+    func retireOnWatch(_ ids: Set<UUID>) throws -> Libre2WatchSession? {
         return try updateRecord { record in
-            record.retiredIDs.insert(session.id)
-            guard let existing = record.session, existing.matchesHandoff(session) else {
-                return false
+            record.retiredIDs.formUnion(ids)
+            guard record.owner != .phone, let existing = record.session, ids.contains(existing.id) else {
+                return nil
             }
             record.owner = .releasingWatch
-            return true
+            return existing
         }
     }
 

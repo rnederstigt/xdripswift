@@ -26,7 +26,7 @@ def walk(key, parent):
 walk(objects[project["rootObject"]]["mainGroup"], repo)
 source_sets = {}
 for target in objects.values():
-    if target.get("isa") != "PBXNativeTarget" or target.get("name") not in ("xdrip", "xDrip Watch App"):
+    if target.get("isa") != "PBXNativeTarget" or target.get("name") not in ("xdrip", "xDrip Watch App", "xDrip Watch Complication Extension"):
         continue
     phase = next(objects[key] for key in target["buildPhases"] if objects[key]["isa"] == "PBXSourcesBuildPhase")
     sources = [paths[objects[key]["fileRef"]] for key in phase["files"]]
@@ -42,6 +42,9 @@ for area, target in (("iPhone", "xdrip"), ("Watch", "xDrip Watch App")):
     assert not expected & source_sets[other], f"{area} code included in the wrong target"
 
 shared = set((addon / "Shared").rglob("*.swift"))
+complication_sources = source_sets["xDrip Watch Complication Extension"]
+assert set((addon / "Complication").glob("*.swift")) <= complication_sources
+assert complication_sources & shared == {addon / "Shared/Managers/Libre2ComplicationDiagnostics.swift"}
 phone_only = {"Libre2Checklist.swift", "Libre2PhoneSwitchAction.swift", "Libre2PhoneReadingStatus.swift", "Libre2PhoneHistoryUpdate.swift", "Libre2HistoryRegistry.swift"}
 watch_shared = {path for path in shared if path.name not in phone_only}
 assert watch_shared <= source_sets["xDrip Watch App"], "Watch is missing shared helpers"
@@ -64,3 +67,9 @@ with (repo / "xDrip Watch App/xDrip Watch App.entitlements").open("rb") as file:
 assert "com.apple.developer.submerged-shallow-depth-and-pressure" not in watch_entitlements
 assert "com.apple.developer.submerged-depth-and-pressure" not in watch_entitlements
 print("Watch Bluetooth, optional location and underwater declarations verified; no audio, Motion usage or depth entitlement.")
+
+# The host is a single-target watchOS app. The notification constants retain their
+# WKExtension namespace, but constructing its singleton asserts at runtime.
+for source in source_sets["xDrip Watch App"]:
+    assert "WKExtension.shared(" not in source.read_text(), f"Extension-only singleton in single-target Watch app: {source}"
+print("Single-target Watch runtime API verified; no WKExtension singleton calls.")

@@ -15,6 +15,11 @@ import WatchKit
 @main
 struct xDrip_Watch_AppApp: App {
     @StateObject var watchState = WatchStateModel()
+
+    init() {
+        Libre2LifecycleDiagnostics.start()
+        Libre2LifecycleDiagnostics.recordSession("Watch app initialized")
+    }
     
     var body: some Scene {
         WindowGroup {
@@ -22,10 +27,14 @@ struct xDrip_Watch_AppApp: App {
                 RootView()
             }.environmentObject(watchState)
         }
+        .backgroundTask(.watchConnectivity) {
+            await Libre2WatchConnectivityTasks.shared.handle()
+        }
         
         // assign the custom view controller to show all watch notifications with snoozeCategory (which will be most of them)
         #if canImport(WatchKit)
         WKNotificationScene(controller: NotificationController.self, category: "snoozeCategoryIdentifier")
+        WKNotificationScene(controller: Libre2NotificationTestController.self, category: Libre2NotificationTest.category)
         #endif
     }
 }

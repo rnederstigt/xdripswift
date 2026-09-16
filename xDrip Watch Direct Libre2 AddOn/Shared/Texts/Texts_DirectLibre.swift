@@ -5,11 +5,81 @@ import Foundation
 class Texts_DirectLibre {
     private static let filename = "DirectLibre"
 
-    // MARK: - Optional background location
+    // MARK: - Experimental page
 
-    static let locationTitle = NSLocalizedString(
-        "locationTitle", tableName: filename, bundle: .main, value: "Background collection using location — Experimental",
-        comment: "Direct Libre experiment")
+    static let diagnosticsRecovery = NSLocalizedString(
+        "diagnosticsRecovery", tableName: filename, bundle: .main, value: "Diagnostics & recovery", comment: "Direct Libre settings destination")
+    static let recoveryTitle = NSLocalizedString(
+        "recoveryTitle", tableName: filename, bundle: .main, value: "Recovery", comment: "Direct Libre section")
+    static let backgroundSection = NSLocalizedString(
+        "backgroundSection", tableName: filename, bundle: .main, value: "Background collection", comment: "Direct Libre section")
+    static let backgroundEnabled = NSLocalizedString(
+        "backgroundEnabled", tableName: filename, bundle: .main, value: "Use location for background collection", comment: "Direct Libre opt-in toggle")
+    static let backgroundHelpTitle = NSLocalizedString(
+        "backgroundHelpTitle", tableName: filename, bundle: .main, value: "About background collection", comment: "Direct Libre help")
+    static let activityOnPhone = NSLocalizedString(
+        "activityOnPhone", tableName: filename, bundle: .main, value: "Recorded on iPhone. Full logs are in Diagnostics & recovery.", comment: "Scope of the main-page activity summary")
+    static let phoneWaiting = NSLocalizedString(
+        "phoneWaiting", tableName: filename, bundle: .main, value: "Waiting for the iPhone sensor connection", comment: "Direct Libre status")
+    static let watchSensorStatusHelp = NSLocalizedString(
+        "watchSensorStatusHelp", tableName: filename, bundle: .main, value: "Sensor connection status is shown on the Watch.", comment: "Companion reachability does not prove the Watch sensor is connected")
+    static let phoneLatestUnavailable = NSLocalizedString(
+        "phoneLatestUnavailable", tableName: filename, bundle: .main, value: "Latest phone reading is not available here yet.", comment: "No cached phone reading")
+    static let notificationTestShortHelp = NSLocalizedString(
+        "notificationTestShortHelp", tableName: filename, bundle: .main, value: "Schedules one Watch notification in 30 seconds.", comment: "Compact notification diagnostic help")
+    static func checklistProgress(_ passed: Int, _ total: Int) -> String {
+        String(format: NSLocalizedString(
+            "checklistProgress", tableName: filename, bundle: .main, value: "%d of %d requirements satisfied",
+            comment: "Applicable Direct Libre checklist requirements"), passed, total)
+    }
+    static func phoneLatestReading(_ date: Date) -> String {
+        String(format: NSLocalizedString(
+            "phoneLatestReading", tableName: filename, bundle: .main, value: "Latest on iPhone: %@",
+            comment: "Timestamp of the latest known phone reading, not a Watch freshness claim"),
+            date.formatted(date: .abbreviated, time: .standard))
+    }
+
+    // MARK: - Manual notification diagnostic
+
+    static let notificationTestButton = NSLocalizedString(
+        "notificationTestButton", tableName: filename, bundle: .main, value: "Test Watch notification",
+        comment: "Direct Libre diagnostic button")
+    static let notificationTestTitle = NSLocalizedString(
+        "notificationTestTitle", tableName: filename, bundle: .main, value: "Direct Libre notification test",
+        comment: "Watch diagnostic notification title")
+    static let notificationTestBody = NSLocalizedString(
+        "notificationTestBody", tableName: filename, bundle: .main,
+        value: "This is a delivery test, not a glucose alarm. Leave xDrip closed while checking background synchronisation.",
+        comment: "Watch diagnostic notification content")
+    static let notificationTestHelp = NSLocalizedString(
+        "notificationTestHelp", tableName: filename, bundle: .main,
+        value: "Schedules one notification on the Watch in 30 seconds. After confirmation, return to the watch face and lock the phone. Enable detailed diagnostics before testing. Another press replaces the pending test.",
+        comment: "Direct Libre diagnostic instructions")
+    static let notificationTestNeedsWatch = NSLocalizedString(
+        "notificationTestNeedsWatch", tableName: filename, bundle: .main,
+        value: "Open xDrip on the Watch to schedule the test and allow notifications if asked.",
+        comment: "Watch must be reachable for an interactive test")
+    static let notificationTestPermission = NSLocalizedString(
+        "notificationTestPermission", tableName: filename, bundle: .main,
+        value: "Enable notification alerts for xDrip on the Watch, then retry the test.",
+        comment: "Watch notifications denied or quiet-only")
+    static let notificationTestUnavailable = NSLocalizedString(
+        "notificationTestUnavailable", tableName: filename, bundle: .main,
+        value: "A notification test could not be started. Wait for the current request to finish and retry.",
+        comment: "Invalid or overlapping diagnostic request")
+    static let notificationTestUnconfirmed = NSLocalizedString(
+        "notificationTestUnconfirmed", tableName: filename, bundle: .main,
+        value: "Watch scheduling was not confirmed. A notification may still appear. Check reachability and that both apps are updated before retrying.",
+        comment: "Lost or unsupported Watch scheduling reply")
+    static func notificationTestScheduled(_ date: Date) -> String {
+        String(format: NSLocalizedString(
+            "notificationTestScheduled", tableName: filename, bundle: .main,
+            value: "Watch test scheduled for %@. Return to the watch face and lock the phone.",
+            comment: "Watch scheduling confirmation; planned local delivery time"),
+            date.formatted(date: .omitted, time: .standard))
+    }
+
+    // MARK: - Optional background location
 
     static let locationHelp = NSLocalizedString(
         "locationHelp", tableName: filename, bundle: .main, value: "Uses ongoing Watch location updates to help Direct Libre run in the background. Locations are not saved or shared. Uses extra battery; continuous collection is not guaranteed. After enabling, open xDrip on the Watch and allow location access.",
@@ -378,6 +448,40 @@ class Texts_DirectLibre {
     static let activityLog = NSLocalizedString(
         "activityLog", tableName: filename, bundle: .main, value: "Recent activity",
         comment: "Direct Libre experiment")
+
+    static let loadWatchActivity = NSLocalizedString(
+        "loadWatchActivity", tableName: filename, bundle: .main, value: "Load Watch activity",
+        comment: "Read the Watch's diagnostic log on demand")
+
+    static let shareActivity = NSLocalizedString(
+        "shareActivity", tableName: filename, bundle: .main, value: "Share",
+        comment: "Share the combined phone and Watch diagnostic report")
+
+    static let detailedDiagnostics = NSLocalizedString(
+        "detailedDiagnostics", tableName: filename, bundle: .main, value: "Detailed diagnostics",
+        comment: "Direct Libre experiment")
+
+    static let detailedDiagnosticsHelp = NSLocalizedString(
+        "detailedDiagnosticsHelp", tableName: filename, bundle: .main,
+        value: "Enable on both devices while investigating a problem, then turn off to reduce logging. Open the Watch app to change this setting.",
+        comment: "Direct Libre experiment")
+
+    static let deliveryDiagnosticsHelp = NSLocalizedString(
+        "deliveryDiagnosticsHelp", tableName: filename, bundle: .main,
+        value: "After testing, open xDrip on the Watch to load its saved activity. Up to 240 activity entries per device are retained; exports include complication values and keep the newest entries that fit. Loading is manual; repeat it to refresh the Watch snapshot.",
+        comment: "Instructions for inspecting background delivery diagnostics")
+
+    static let watchActivityUnavailable = NSLocalizedString(
+        "watchActivityUnavailable", tableName: filename, bundle: .main,
+        value: "Could not read Watch activity. Update and open the Watch app, then try again.",
+        comment: "The Watch returned an unavailable or unsupported log snapshot")
+
+    static func watchActivitySnapshot(_ date: Date) -> String {
+        String(format: NSLocalizedString(
+            "watchActivitySnapshot", tableName: filename, bundle: .main,
+            value: "Watch snapshot loaded: %@", comment: "Time of the manually loaded Watch log"),
+            date.formatted(date: .abbreviated, time: .standard))
+    }
 
     static let emptyLog = NSLocalizedString(
         "emptyLog", tableName: filename, bundle: .main, value: "No activity yet.",

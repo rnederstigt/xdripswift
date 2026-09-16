@@ -17,6 +17,7 @@ extension WatchStateModel: Libre2WatchDisplay {
         let defaults = UserDefaults(suiteName: Bundle.main.appGroupSuiteName)
         let data = defaults?.data(forKey: "complicationSharedUserDefaults.\(Bundle.main.mainAppBundleIdentifier)")
         let cached = data.flatMap { try? JSONDecoder().decode(ComplicationSharedUserDefaultsModel.self, from: $0) }
+        recordLibreComplicationCache(cached, source: "startup-cache")
         let preferences = Libre2WatchPreferences()
         isMgDl = preferences.restoreUnits(cachedUnit: cached?.isMgDl)
         let cachedLimits = cached.map {
@@ -26,6 +27,21 @@ extension WatchStateModel: Libre2WatchDisplay {
         if let limits = preferences.restoreLimits(cachedLimits: cachedLimits) {
             _ = applyDirectLibreLimits(limits)
         }
+    }
+
+    /// Observe the cache at startup and after each successful host write. Do not restore,
+    /// discard, or republish readings just to collect this diagnostic.
+    func recordLibreComplicationCache(_ data: ComplicationSharedUserDefaultsModel?, source: String) {
+        let enabled = Libre2ActivityLog.shared.isTracingEnabled
+            && Libre2SessionStore.shared.snapshot.hasExperimentalState
+        Libre2ComplicationDiagnostics.shared.setEnabled(enabled)
+        guard enabled else { return }
+        let value = data?.bgReadingValues.first
+        let date = data?.bgReadingDatesAsDouble.first.map { Date(timeIntervalSince1970: $0) }
+        let display = value.map { $0.mgDlToMmolAndToString(mgDl: data?.isMgDl ?? isMgDl) } ?? "none"
+        Libre2ActivityLog.shared.record(Libre2ComplicationDiagnostics.message("Watch cache",
+            value: value, sampleDate: date, displayValue: display,
+            details: "source=\(source) units=\(data?.isMgDl == false ? "mmol/L" : "mg/dL")"))
     }
 
     /// Display settings may follow the phone during direct collection; sensor status and readings may not.

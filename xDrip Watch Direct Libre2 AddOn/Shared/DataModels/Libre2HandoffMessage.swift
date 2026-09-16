@@ -13,6 +13,16 @@ struct Libre2HandoffMessage: Codable {
     }
 
     static let key = "phoneControlledLibre2Handoff"
+    static let retiredIDsKey = "phoneControlledLibre2RetiredIDs"
+
+    /// Retirements survive NFC clearing the session payload. Never infer retirement from age.
+    static func retiredIDs(from dictionary: [String: Any]) throws -> Set<UUID>? {
+        guard let value = dictionary[retiredIDsKey] else { return nil }
+        guard let strings = value as? [String] else { throw Libre2HandoffError.invalidSession }
+        let ids = strings.compactMap(UUID.init(uuidString:))
+        guard ids.count == strings.count else { throw Libre2HandoffError.invalidSession }
+        return Set(ids)
+    }
 
     let kind: Kind
     let session: Libre2WatchSession

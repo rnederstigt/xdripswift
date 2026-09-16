@@ -88,6 +88,67 @@ final class Libre2PhoneHistorySyncTests: XCTestCase {
         }
     }
 
+    func testLatestImportPrecedesWaitingHistoryAndCoalescesPendingLiveMessages() async throws {
+        let wasMaster = UserDefaults.standard.isMaster
+        UserDefaults.standard.isMaster = true
+        defer { UserDefaults.standard.isMaster = wasMaster }
+        let (manager, _, registry, old) = try await fixture()
+        let backlog = Libre2HistoryReading(sessionID: old.sessionID, sensorUID: uid, sensorMinute: 101,
+            date: old.date.addingTimeInterval(60), glucose: 120)
+        let earlier = Libre2HistoryReading(sessionID: old.sessionID, sensorUID: uid, sensorMinute: 109,
+            date: Date().addingTimeInterval(-65), glucose: 123)
+        let latest = Libre2HistoryReading(sessionID: old.sessionID, sensorUID: uid, sensorMinute: 110,
+            date: Date().addingTimeInterval(-5), glucose: 125)
+        let sync = Libre2PhoneHistorySync(coreDataManager: manager, session: .default, registry: registry)
+        let events = ImportEvents()
+        let observer = observe(sync, events: events)
+        defer { NotificationCenter.default.removeObserver(observer) }
+        let replies = expectation(description: "All queued messages answered")
+        replies.expectedFulfillmentCount = 4
+        var savedOrder: [String] = []
+        for (reading, live) in [(old, false), (backlog, false), (earlier, true), (latest, true)] {
+            let batch = Libre2HistoryBatch(readings: [reading])
+            let message = try live ? batch.latestDictionary : batch.dictionary
+            XCTAssertTrue(sync.receive(message) { reply in
+                if reading == earlier {
+                    XCTAssertEqual(reply["superseded"] as? Bool, true)
+                    XCTAssertNil(reply[Libre2HistoryAcknowledgement.key])
+                } else {
+                    XCTAssertEqual(try? Libre2HistoryAcknowledgement.decode(reply).batchID, batch.id)
+                    savedOrder.append(reading.id)
+                    // A reply must follow the durable save, including on the live route.
+                    XCTAssertTrue((try? self.diskReadings(manager).contains { $0.id == reading.id }) == true)
+                }
+                replies.fulfill()
+            })
+        }
+        await fulfillment(of: [replies], timeout: 5)
+        XCTAssertEqual(savedOrder, [old.id, latest.id, backlog.id])
+        XCTAssertEqual(events.dates.compactMap { $0 }, [latest.date])
+
+        // Normal history later fills the superseded minute and deduplicates the live value.
+        _ = try await send(Libre2HistoryBatch(readings: [old, backlog, earlier, latest]), to: sync)
+        XCTAssertEqual(try diskReadings(manager).count, 4)
+        XCTAssertEqual(events.dates.compactMap { $0 }, [latest.date])
+    }
+
+    func testLatestMessageRetainsSensorValidationAndSaveFailureRules() async throws {
+        let (manager, _, registry, sample) = try await fixture()
+        let batch = Libre2HistoryBatch(readings: [sample])
+        let message = try batch.latestDictionary
+        for unknownSensor in [true, false] {
+            let sync = Libre2PhoneHistorySync(coreDataManager: manager, session: .default,
+                registry: unknownSensor ? Libre2HistoryRegistry { _ in } : registry,
+                beforeStoreSave: { throw Libre2HistoryError.unavailable })
+            let reply: [String: Any] = await withCheckedContinuation { continuation in
+                XCTAssertTrue(sync.receive(message) { continuation.resume(returning: $0) })
+            }
+            XCTAssertNil(reply[Libre2HistoryAcknowledgement.key])
+            XCTAssertNotNil(reply["error"])
+            XCTAssertTrue(try diskReadings(manager).isEmpty)
+        }
+    }
+
     func testFinalSaveFailureWithholdsAcknowledgementAndDuplicateRetryStillSaves() async throws {
         let (manager, _, registry, sample) = try await fixture()
         let failing = Libre2PhoneHistorySync(coreDataManager: manager, session: .default, registry: registry,

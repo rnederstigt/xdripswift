@@ -54,7 +54,7 @@ final class Libre2PhoneHandoff: ObservableObject {
         guard lastReachability != reachable else { return }
         lastReachability = reachable
         Libre2ActivityLog.shared.record(reachable ? Texts_DirectLibre.watchReachableLog : Texts_DirectLibre.watchUnreachableLog)
-
+        if reachable { syncRetiredSessions() }
     }
 
     /// Called on main for connection, ownership or freshness changes; never sends a radio request.
@@ -246,6 +246,32 @@ final class Libre2PhoneHandoff: ObservableObject {
 
     // MARK: - WatchConnectivity
 
+    /// NFC recovery must also reach a Watch which missed the original queued revocation.
+    /// Use the existing journal, activation/reachability events and transaction messages.
+    private var retiredSessionsDictionary: [String: Any] {
+        [Libre2HandoffMessage.retiredIDsKey: store.snapshot.retiredIDs.map(\.uuidString).sorted()]
+    }
+
+    func notifyWatchOfNFCReset(previousSession: Libre2WatchSession?) {
+        let session = WCSession.default
+        if session.activationState == .activated {
+            // Retain the legacy revoke payload for a companion awaiting an update.
+            var dictionary = previousSession.flatMap {
+                try? Libre2HandoffMessage(kind: .revoke, session: $0).dictionary
+            } ?? [:]
+            dictionary.merge(retiredSessionsDictionary) { _, retirement in retirement }
+            session.transferUserInfo(dictionary)
+        }
+        syncRetiredSessions()
+    }
+
+    private func syncRetiredSessions() {
+        guard reachable, !store.snapshot.retiredIDs.isEmpty else { return }
+        WCSession.default.sendMessage(retiredSessionsDictionary, replyHandler: { _ in }, errorHandler: { _ in
+            // Persisted IDs are resent on restored reachability and with the next transaction.
+        })
+    }
+
     static func receiveWatchMessage(_ dictionary: [String: Any], reply: @escaping ([String: Any]) -> Void) {
         guard dictionary[Libre2HandoffMessage.key] != nil else { reply([:]); return }
         DispatchQueue.main.async { shared.receive(dictionary, reply: reply) }
@@ -258,7 +284,8 @@ final class Libre2PhoneHandoff: ObservableObject {
         }
 
         do {
-            let message = try Libre2HandoffMessage(kind: kind, session: session).dictionary
+            var message = try Libre2HandoffMessage(kind: kind, session: session).dictionary
+            message.merge(retiredSessionsDictionary) { _, retirement in retirement }
             let expectedOwner = owner
             WCSession.default.sendMessage(
                 message,
