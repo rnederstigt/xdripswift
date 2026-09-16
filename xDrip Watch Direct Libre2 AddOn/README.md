@@ -45,6 +45,7 @@ Ordinary NFC reset after Direct Libre use reprovisions streaming credentials and
 
 ## Read the implementation
 
+- [Visual overview](Docs/OVERVIEW.md): architecture, change footprint and original-code boundaries, with linked switching and reading diagrams.
 - [Integration map and protocol](Docs/INTEGRATION.md): start here to understand or port the feature into master.
 - [Audit against master](Docs/AUDIT.md): every original-file change, removals and intentional behavioural exceptions.
 - [Validation and device tests](Docs/TESTING.md): automated checks, build limitations and a concise testing workflow.

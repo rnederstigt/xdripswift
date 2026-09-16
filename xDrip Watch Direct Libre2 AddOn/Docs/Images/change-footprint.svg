@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="556" viewBox="0 0 1040 556" role="img" aria-labelledby="title description">
+<title id="title">Direct Libre 2 — change footprint against audited master</title>
+<desc id="description">9,477 added text lines across 80 changed files. 4,799 lines implement the add-on, 3,521 provide tests and verification, 429 are documentation, 321 are original Swift integration hooks, and 407 are configuration and housekeeping. 89 lines are deleted. Personal signing edits and the visual documentation are excluded.</desc>
+<rect width="1040" height="556" rx="12" fill="#ffffff"/>
+<g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" fill="#223047">
+<text x="36" y="47" font-size="25" fill="#223047" text-anchor="start" font-weight="600">Where the added lines live</text>
+<text x="36" y="76" font-size="15" fill="#566478" text-anchor="start" font-weight="400">9,477 additions · 89 deletions · 80 changed files</text>
+<rect x="36.000" y="101" width="490.180" height="35" fill="#287b59"><title>Add-on implementation: 4,799 added lines</title></rect>
+<rect x="526.180" y="101" width="359.642" height="35" fill="#5873a6"><title>Tests and verification: 3,521 added lines</title></rect>
+<rect x="885.822" y="101" width="43.819" height="35" fill="#8970a1"><title>Documentation: 429 added lines</title></rect>
+<rect x="929.641" y="101" width="32.788" height="35" fill="#bd7b17"><title>Original source hooks: 321 added lines</title></rect>
+<rect x="962.428" y="101" width="41.572" height="35" fill="#7c8798"><title>Configuration and housekeeping: 407 added lines</title></rect>
+<text x="36" y="169" font-size="13" fill="#566478" text-anchor="start" font-weight="400">Added text lines by purpose · bar segments use the same scale</text>
+<text x="670" y="211" font-size="13" fill="#566478" text-anchor="end" font-weight="400">FILES</text>
+<text x="797" y="211" font-size="13" fill="#566478" text-anchor="end" font-weight="400">ADDED LINES</text>
+<text x="904" y="211" font-size="13" fill="#566478" text-anchor="end" font-weight="400">SHARE</text>
+<rect x="36" y="235" width="14" height="14" rx="2" fill="#287b59"/>
+<text x="62" y="248" font-size="17" fill="#223047" text-anchor="start" font-weight="400">Add-on implementation</text>
+<text x="670" y="248" font-size="17" fill="#223047" text-anchor="end" font-weight="400">40</text>
+<text x="797" y="248" font-size="17" fill="#223047" text-anchor="end" font-weight="400">4,799</text>
+<text x="904" y="248" font-size="17" fill="#223047" text-anchor="end" font-weight="400">50.6%</text>
+<rect x="36" y="278" width="14" height="14" rx="2" fill="#5873a6"/>
+<text x="62" y="291" font-size="17" fill="#223047" text-anchor="start" font-weight="400">Tests and verification</text>
+<text x="670" y="291" font-size="17" fill="#223047" text-anchor="end" font-weight="400">19</text>
+<text x="797" y="291" font-size="17" fill="#223047" text-anchor="end" font-weight="400">3,521</text>
+<text x="904" y="291" font-size="17" fill="#223047" text-anchor="end" font-weight="400">37.2%</text>
+<rect x="36" y="321" width="14" height="14" rx="2" fill="#8970a1"/>
+<text x="62" y="334" font-size="17" fill="#223047" text-anchor="start" font-weight="400">Documentation</text>
+<text x="670" y="334" font-size="17" fill="#223047" text-anchor="end" font-weight="400">5</text>
+<text x="797" y="334" font-size="17" fill="#223047" text-anchor="end" font-weight="400">429</text>
+<text x="904" y="334" font-size="17" fill="#223047" text-anchor="end" font-weight="400">4.5%</text>
+<rect x="36" y="364" width="14" height="14" rx="2" fill="#bd7b17"/>
+<text x="62" y="377" font-size="17" fill="#223047" text-anchor="start" font-weight="400">Original source hooks</text>
+<text x="670" y="377" font-size="17" fill="#223047" text-anchor="end" font-weight="400">10</text>
+<text x="797" y="377" font-size="17" fill="#223047" text-anchor="end" font-weight="400">321</text>
+<text x="904" y="377" font-size="17" fill="#223047" text-anchor="end" font-weight="400">3.4%</text>
+<rect x="36" y="407" width="14" height="14" rx="2" fill="#7c8798"/>
+<text x="62" y="420" font-size="17" fill="#223047" text-anchor="start" font-weight="400">Configuration and housekeeping</text>
+<text x="670" y="420" font-size="17" fill="#223047" text-anchor="end" font-weight="400">6</text>
+<text x="797" y="420" font-size="17" fill="#223047" text-anchor="end" font-weight="400">407</text>
+<text x="904" y="420" font-size="17" fill="#223047" text-anchor="end" font-weight="400">4.3%</text>
+<path d="M36 449 H1004" stroke="#d9e0e7"/>
+<text x="36" y="477" font-size="14" fill="#566478" text-anchor="start" font-weight="400">Feature snapshot · audited master 53b3d6b → committed revision 0a6b202</text>
+<text x="36" y="501" font-size="14" fill="#566478" text-anchor="start" font-weight="400">Includes accuracy controls. Excludes local signing and subsequent visual documentation.</text>
+<text x="36" y="525" font-size="14" fill="#566478" text-anchor="start" font-weight="400">Line counts measure change volume, not runtime cost or behavioural impact.</text>
+</g></svg>
