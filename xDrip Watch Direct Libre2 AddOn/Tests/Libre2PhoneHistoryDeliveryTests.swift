@@ -7,12 +7,7 @@ enum Libre2HandoffError: Error { case invalidSession }
 enum ConstantsFollower { static let maximumBgReadingAgeForAlertsInSeconds: TimeInterval = 300 }
 final class Libre2ActivityLog {
     static let shared = Libre2ActivityLog()
-    var isTracingEnabled = true
-    var deliveryEvents: [(event: String, reading: Libre2HistoryReading, details: String, date: Date)] = []
     func record(_ message: String) {}
-    func recordDelivery(_ event: String, reading: Libre2HistoryReading, details: String = "", now: Date = Date()) {
-        deliveryEvents.append((event, reading, details, now))
-    }
 }
 final class Libre2HistoryRegistry {}
 final class CoreDataManager {
@@ -77,8 +72,6 @@ private enum PhoneHistoryDeliveryTests {
         precondition(replies == [first.id, latest.id, history.id])
         precondition(superseded == [earlier.id, earlier.id])
         precondition(dates == [latest.readings[0].date])
-        let latestEvents = Libre2ActivityLog.shared.deliveryEvents.filter { $0.reading == latest.readings[0] }
-        precondition(latestEvents.map(\.event) == ["Phone received latest", "Phone import started", "Phone saved (1 inserted)"])
         print("PASS: Latest import follows the current save and precedes queued history; older live messages coalesce without save acknowledgements")
 
         try enqueue(latest, live: false)
@@ -96,27 +89,7 @@ private enum PhoneHistoryDeliveryTests {
         for _ in 0..<10_000 where !failed { await Task.yield() }
         precondition(failed && replies.count == 4 && dates.count == 1)
         precondition(session.transfers.isEmpty)
-        precondition(Libre2ActivityLog.shared.deliveryEvents.last!.event.hasPrefix("Phone import failed:"))
         print("PASS: Latest import failure cannot acknowledge storage or announce a current reading")
-        let recordedAt = Date().addingTimeInterval(-3)
-        let receipt = Libre2PhoneHistorySync.Receipt(route: "userInfo", date: recordedAt,
-            uptime: ProcessInfo.processInfo.systemUptime - 3)
-        let diagnosticBatch = batch(121)
-        let diagnosticMessage = try diagnosticBatch.dictionary
-        precondition(sync.receive(diagnosticMessage, receipt: receipt))
-        let events = Libre2ActivityLog.shared.deliveryEvents.filter { $0.reading == diagnosticBatch.readings[0] }
-        precondition(events.map(\.event) == ["Phone callback entered", "Phone main handler started", "Phone received history"])
-        precondition(events[0].date == recordedAt && events[1].date > recordedAt)
-        precondition(events[0].details.contains("route=userInfo"))
-        let delay = Double(events[1].details.components(separatedBy: "mainQueueWaitMs=")[1])!
-        precondition(delay >= 3_000 && delay < 4_000)
-        let eventCount = Libre2ActivityLog.shared.deliveryEvents.count
-        precondition(!sync.receive(["ordinary": true], receipt: receipt))
-        precondition(Libre2ActivityLog.shared.deliveryEvents.count == eventCount)
-        for _ in 0..<10_000 where session.transfers.isEmpty { await Task.yield() }
-        let acknowledgement = try Libre2HistoryAcknowledgement.decode(session.transfers[0])
-        precondition(acknowledgement.batchID == diagnosticBatch.id)
-        print("PASS: Callback timing survives the main-queue wait and ignores unrelated messages")
         let manager = WatchManager(sync)
         let context = batch(122)
         let transfersBefore = session.transfers.count
@@ -125,11 +98,7 @@ private enum PhoneHistoryDeliveryTests {
         for _ in 0..<10_000 where !store.saved.contains(context) { await Task.yield() }
         precondition(store.saved.contains(context) && dates.count == datesBefore + 1)
         precondition(session.transfers.count == transfersBefore)
-        let contextEvents = Libre2ActivityLog.shared.deliveryEvents.filter { $0.reading == context.readings[0] }
-        precondition(contextEvents.map(\.event) == ["Phone callback entered", "Phone main handler started",
-            "Phone received latest", "Phone import started", "Phone saved (1 inserted)"])
-        precondition(contextEvents[0].details.contains("route=applicationContext"))
-        print("PASS: Production application-context delegate imports latest data, records callback timing and sends no history acknowledgement")
+        print("PASS: Production application-context delegate imports latest data and sends no history acknowledgement")
 
         let savesBefore = store.saved.count
         // A late/duplicate context must not announce an older value as current.
@@ -139,11 +108,9 @@ private enum PhoneHistoryDeliveryTests {
         precondition(store.saved.count == savesBefore + 2 && dates.count == datesBefore + 1)
         precondition(session.transfers.count == transfersBefore)
         for _ in 0..<100 { await Task.yield() }
-        let eventsBefore = Libre2ActivityLog.shared.deliveryEvents.count
         manager.session(session, didReceiveApplicationContext: ["ordinary": true])
         manager.session(session, didReceiveApplicationContext: try history.dictionary)
         for _ in 0..<10 { await Task.yield() }
-        precondition(Libre2ActivityLog.shared.deliveryEvents.count == eventsBefore)
         precondition(store.saved.count == savesBefore + 2)
         print("PASS: Late/duplicate contexts do not repeat current-reading effects; unrelated or historical contexts are ignored")
         // Multiple routes share only an in-flight save; each sender keeps its own batch ID.
@@ -186,7 +153,7 @@ private enum PhoneHistoryDeliveryTests {
             }
             print("PASS: Shared in-flight import \(outcome) preserves per-batch responses and never acknowledges early")
         }
-        print("9 phone import scheduling/diagnostic checks passed (storage spies, not Core Data).")
+        print("8 phone import scheduling checks passed (storage spies, not Core Data).")
     }
 }
 #endif

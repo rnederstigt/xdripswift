@@ -5,6 +5,31 @@ import Foundation
 /// All callbacks and handoff actions run on main, so counter reservation and writes stay ordered.
 final class Libre2WatchCollector: NSObject {
 
+    /// Transient Bluetooth progress, separate from the persisted handoff transaction.
+    enum ConnectionState {
+        case inactive, scanning, connecting, restarting, connected, disconnecting, waitingToRetry, bluetoothUnavailable
+
+        var isConnecting: Bool {
+            switch self {
+            case .scanning, .connecting, .restarting, .waitingToRetry: return true
+            default: return false
+            }
+        }
+
+        var text: String {
+            switch self {
+            case .inactive: return Texts_DirectLibre.directDisconnected
+            case .scanning: return Texts_DirectLibre.scanning
+            case .connecting: return Texts_DirectLibre.connecting
+            case .restarting: return Texts_DirectLibre.restarting
+            case .connected: return Texts_DirectLibre.directConnected
+            case .disconnecting: return Texts_DirectLibre.returning
+            case .waitingToRetry: return Texts_DirectLibre.waitingToRetry
+            case .bluetoothUnavailable: return Texts_DirectLibre.bluetoothUnavailableStatus
+            }
+        }
+    }
+
     // MARK: - Properties
 
     var onStatus: (String) -> Void = { _ in }
@@ -19,7 +44,7 @@ final class Libre2WatchCollector: NSObject {
     private var receiveCharacteristic: CBCharacteristic?
     private var hasAttemptedUnlock = false
     private var lastReadingAt: Date?
-    private var connectedAt: Date?
+    private var restartRequested = false
     private var scanOnNextAttempt = false
     private var reconnectDelayAfterDisconnect: TimeInterval?
 
@@ -32,7 +57,11 @@ final class Libre2WatchCollector: NSObject {
     private var connectionTimeoutWorkItem: DispatchWorkItem?
     private var reconnectWorkItem: DispatchWorkItem?
 
-    var isConnected: Bool { centralManager.state == .poweredOn && peripheral?.state == .connected }
+    private(set) var connectionState: ConnectionState = .inactive {
+        didSet {
+            if connectionState != oldValue { onConnectionChanged() }
+        }
+    }
 
     // MARK: - Initialization
 
@@ -55,12 +84,14 @@ final class Libre2WatchCollector: NSObject {
             scanOnNextAttempt = false
         }
         guard centralManager.state == .poweredOn else {
+            connectionState = .bluetoothUnavailable
             onStatus(Texts_DirectLibre.bluetoothUnavailable)
             return
         }
         guard peripheral == nil, !centralManager.isScanning else { return }
         reconnectWorkItem?.cancel()
         reconnectDelayAfterDisconnect = nil
+        restartRequested = false
 
         onStatus(Texts_DirectLibre.connecting)
         if !scanOnNextAttempt, let peripheralID = store.snapshot.watchPeripheralID,
@@ -70,46 +101,52 @@ final class Libre2WatchCollector: NSObject {
             return
         }
         scanOnNextAttempt = false
+        connectionState = .scanning
         centralManager.scanForPeripherals(withServices: [CBUUID(string: ConstantsLibre2.serviceUUID)])
     }
 
-    /// Only explicit taps call this; display timers must not restart Bluetooth.
-    func retryConnection(at date: Date = Date()) {
-        guard store.snapshot.owner.allowsWatchConnection, !stopRequested,
-            centralManager.state == .poweredOn, reconnectDelayAfterDisconnect == nil
-        else { return }
+    /// A deliberate double tap restarts even a fresh connection or pending attempt.
+    /// Further taps share the cancellation already in progress; automatic recovery is unchanged.
+    func restartConnection() {
+        guard store.snapshot.owner.allowsWatchConnection, !stopRequested else { return }
+        guard centralManager.state == .poweredOn else {
+            connectionState = .bluetoothUnavailable
+            onStatus(connectionState.text)
+            return
+        }
+        guard !restartRequested else { return }
+        restartRequested = true
+        connectionState = .restarting
+        onStatus(Texts_DirectLibre.retryingConnection)
+        reconnectWorkItem?.cancel()
+        connectionTimeoutWorkItem?.cancel()
+        centralManager.stopScan()
+        reconnectDelayAfterDisconnect = 0
 
-        if let peripheral {
-            switch peripheral.state {
-            case .connected:
-                // Give the first reading the same grace period as later readings before a manual reset.
-                guard let lastActivity = lastReadingAt ?? connectedAt,
-                    date.timeIntervalSince(lastActivity) >= ConstantsLibre2.recentReadingInterval
-                else { return }
-                fail(Texts_DirectLibre.retryingConnection, retryDelay: 0)
-            case .disconnected:
-                finishDisconnect()
-                start()
-            case .connecting, .disconnecting:
-                break
-            @unknown default:
-                break
+        if let peripheral, peripheral.state != .disconnected {
+            // A protocol failure may already be cancelling this attempt. Its callback
+            // will complete the manual restart without a second cancellation request.
+            if peripheral.state != .disconnecting {
+                centralManager.cancelPeripheralConnection(peripheral)
             }
         } else {
-            // start() cancels a pending delay, but leaves an existing scan alone.
-            start()
+            finishDisconnect()
+            scheduleReconnect()
         }
     }
 
     private func connect(_ peripheral: CBPeripheral) {
         self.peripheral = peripheral
         peripheral.delegate = self
+        connectionState = .connecting
         centralManager.connect(peripheral)
     }
 
     /// The completion grants permission to send RETURN_COMMIT; a cancellation request alone does not.
     func stop(completion: @escaping () -> Void) {
         stopRequested = true
+        restartRequested = false
+        connectionState = .disconnecting
         reconnectDelayAfterDisconnect = nil
         disconnectCompletion = completion
         disconnectWhenBluetoothIsReady()
@@ -121,6 +158,7 @@ final class Libre2WatchCollector: NSObject {
         centralManager.stopScan()
 
         guard centralManager.state == .poweredOn else {
+            connectionState = .bluetoothUnavailable
             onStatus(Texts_DirectLibre.enableBluetoothToReturn)
             return
         }
@@ -143,10 +181,9 @@ final class Libre2WatchCollector: NSObject {
         receiveCharacteristic = nil
         hasAttemptedUnlock = false
         lastReadingAt = nil
-        connectedAt = nil
         packetAssembler.reset()
 
-        onConnectionChanged()
+        connectionState = restartRequested ? .restarting : .inactive
         let completion = disconnectCompletion
         disconnectCompletion = nil
         completion?()
@@ -167,6 +204,8 @@ final class Libre2WatchCollector: NSObject {
     }
 
     private func fail(_ status: String, retryDelay: TimeInterval = ConstantsLibre2.reconnectDelay) {
+        guard !restartRequested else { return }
+        connectionState = .waitingToRetry
         onStatus(status)
         connectionTimeoutWorkItem?.cancel()
         centralManager.stopScan()
@@ -185,6 +224,7 @@ final class Libre2WatchCollector: NSObject {
         reconnectDelayAfterDisconnect = nil
         guard store.snapshot.owner.allowsWatchConnection, !stopRequested else { return }
         reconnectWorkItem?.cancel()
+        connectionState = restartRequested ? .restarting : .waitingToRetry
         let workItem = DispatchWorkItem { [weak self] in
             self?.start()
         }
@@ -197,17 +237,10 @@ final class Libre2WatchCollector: NSObject {
     private func processFrame(_ frame: Data, session: Libre2WatchSession) {
         do {
             let decryptedData = Data(try Libre2Core.decryptBLE(sensorUID: session.sensorUID, data: frame))
-            guard latestGlucoseIsValid(in: decryptedData, calibration: session.calibration) else {
-                // Like the phone parser, discard an invalid measurement without cycling Bluetooth.
-                onStatus(Texts_DirectLibre.invalidReading)
-                return
-            }
-
             let parsedData = Libre2Core.parseBLEData(
                 decryptedData,
-                libre1DerivedAlgorithmParameters: session.calibration,
-                state: &parserState,
-                allowsRawFallback: false
+                calibration: session.calibration,
+                state: &parserState
             )
             guard parsedData.sensorTimeInMinutes >= ConstantsLibre2.minimumSensorAgeInMinutes else {
                 onStatus(Texts_DirectLibre.sensorWarmingUp)
@@ -229,14 +262,6 @@ final class Libre2WatchCollector: NSObject {
             onStatus(Texts_DirectLibre.frameAuthenticationFailed)
             packetAssembler.reset()
         }
-    }
-
-    /// The shared iOS parser supports raw fallback, but raw values must never reach the Watch display.
-    private func latestGlucoseIsValid(in data: Data, calibration: Libre2Calibration) -> Bool {
-        let rawGlucose = Libre2Core.readBits(data, 0, 0, 14)
-        let rawTemperature = Libre2Core.readBits(data, 0, 14, 12) << 2
-        let glucose = calibration.glucose(raw: rawGlucose, temperature: rawTemperature)
-        return rawGlucose > 0 && glucose.isFinite && glucose > 0 && glucose < ConstantsLibre2.maximumValidGlucose
     }
 
     private func displaySamples(from samples: [Libre2Sample]) -> [Libre2Sample] {
@@ -270,6 +295,8 @@ extension Libre2WatchCollector: CBCentralManagerDelegate {
             if central.state == .poweredOff || central.state == .resetting {
                 finishDisconnect()
             }
+            restartRequested = false
+            connectionState = .bluetoothUnavailable
             onStatus(Texts_DirectLibre.bluetoothUnavailable)
         }
     }
@@ -277,7 +304,7 @@ extension Libre2WatchCollector: CBCentralManagerDelegate {
     func centralManager(
         _ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber
     ) {
-        guard store.snapshot.owner.allowsWatchConnection,
+        guard store.snapshot.owner.allowsWatchConnection, !stopRequested, !restartRequested,
             self.peripheral == nil,
             let session = store.snapshot.session
         else {
@@ -308,10 +335,9 @@ extension Libre2WatchCollector: CBCentralManagerDelegate {
         }
         hasAttemptedUnlock = false
         packetAssembler.reset()
-        connectedAt = Date()
         scanOnNextAttempt = false
         connectionTimeoutWorkItem?.cancel()
-        onConnectionChanged()
+        connectionState = .connected
         peripheral.discoverServices([CBUUID(string: ConstantsLibre2.serviceUUID)])
     }
 
@@ -338,8 +364,14 @@ extension Libre2WatchCollector: CBCentralManagerDelegate {
 // MARK: - CBPeripheralDelegate
 
 extension Libre2WatchCollector: CBPeripheralDelegate {
+    private func acceptsEvents(from peripheral: CBPeripheral) -> Bool {
+        store.snapshot.owner.allowsWatchConnection && !stopRequested && !restartRequested
+            && reconnectDelayAfterDisconnect == nil && self.peripheral === peripheral
+            && peripheral.state == .connected
+    }
+
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard store.snapshot.owner.allowsWatchConnection else { return }
+        guard acceptsEvents(from: peripheral) else { return }
         guard error == nil,
             let service = peripheral.services?.first(where: { $0.uuid == CBUUID(string: ConstantsLibre2.serviceUUID) })
         else {
@@ -353,7 +385,7 @@ extension Libre2WatchCollector: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        guard store.snapshot.owner.allowsWatchConnection else { return }
+        guard acceptsEvents(from: peripheral) else { return }
         guard error == nil else {
             fail(Texts_DirectLibre.characteristicDiscoveryFailed)
             return
@@ -372,15 +404,14 @@ extension Libre2WatchCollector: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard store.snapshot.owner.allowsWatchConnection,
+        guard acceptsEvents(from: peripheral),
             characteristic.uuid == CBUUID(string: ConstantsLibre2.writeCharacteristicUUID)
         else { return }
         guard error == nil else { fail(Texts_DirectLibre.unlockWriteFailed); return }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        guard store.snapshot.owner.allowsWatchConnection,
-            !stopRequested, peripheral.state == .connected,
+        guard acceptsEvents(from: peripheral),
             characteristic.uuid == CBUUID(string: ConstantsLibre2.receiveCharacteristicUUID)
         else { return }
         guard error == nil, characteristic.isNotifying else {
@@ -411,7 +442,7 @@ extension Libre2WatchCollector: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard store.snapshot.owner.allowsWatchConnection, hasAttemptedUnlock,
+        guard acceptsEvents(from: peripheral), hasAttemptedUnlock,
             characteristic.uuid == CBUUID(string: ConstantsLibre2.receiveCharacteristicUUID), error == nil,
             let value = characteristic.value, let session = store.snapshot.session,
             let frame = packetAssembler.append(value)

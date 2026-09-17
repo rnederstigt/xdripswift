@@ -24,7 +24,6 @@ enum ConstantsLibre2 {
     static let minimumSensorAgeInMinutes: UInt16 = 60
     static let maximumValidGlucose: Double = 3000
     static let maximumDisplayGlucose: Double = 600
-    static let rawGlucoseMultiplier: Double = 117.64705
 
     // Match ConstantsBloodGlucose and ConstantsBGGraphBuilder without importing the phone targets.
     static let mgDlToMmoll: Double = 0.0555

@@ -6,30 +6,19 @@ enum Libre2HandoffError: Error { case invalidSession }
 enum WKExtension {
     static let applicationDidBecomeActiveNotification = Notification.Name("test-watch-activation")
 }
-enum WKApplication {
-    enum State { case active, background }
-    struct Extension { var applicationState = State.background }
-    static func shared() -> Extension { Extension() }
-}
+
 final class DispatchQueue {
     static let main = DispatchQueue()
     func async(execute work: @escaping () -> Void) { work() }
 }
 final class Libre2ActivityLog {
     static let shared = Libre2ActivityLog()
-    var deliveryEvents: [(event: String, reading: Libre2HistoryReading, details: String)] = []
-    var isTracingEnabled = true
     func record(_ message: String) {}
-    func recordTrace(_ message: @autoclosure () -> String) {}
-    func recordDelivery(_ event: String, reading: Libre2HistoryReading, details: String = "") {
-        deliveryEvents.append((event, reading, details))
-    }
 }
 enum WCSessionActivationState { case activated, inactive }
 final class WCSessionUserInfoTransfer {
     let userInfo: [String: Any]
     var isCancelled = false
-    var isTransferring = true
     var isFinished = false
     var onCancel: (() -> Void)?
     init(userInfo: [String: Any]) { self.userInfo = userInfo }
@@ -94,7 +83,6 @@ private final class Fixture {
     var session: WCSession { .default }
 
     init(reachable: Bool = true) throws {
-        Libre2ActivityLog.shared.deliveryEvents = []
         WCSession.default = WCSession()
         WCSession.default.isReachable = reachable
         var writer: ((Libre2HistoryQueue.State) throws -> Void)?
@@ -165,7 +153,6 @@ private enum HistoryDeliveryTests {
                 f.sync.flush()
                 expect(f.session.contextUpdates.count == 1)
                 expect(try Libre2HistoryBatch.decode(f.session.latestRequests.last!.message).readings == [newer])
-                expect(Libre2ActivityLog.shared.deliveryEvents.contains { $0.event == "Watch latest context failed" })
                 f.session.failContextUpdate = false
                 f.sync.flush()
                 expect(f.session.contextUpdates.count == 2 && f.disk.pending.count == 3)
@@ -199,7 +186,6 @@ private enum HistoryDeliveryTests {
                 let first = f.disk.batch!
                 let transfer = f.session.outstandingUserInfoTransfers[0]
                 transfer.isFinished = true
-                f.sync.transferFinished(transfer.userInfo, error: nil)
                 let submitted = f.clock.date
                 for minute in 1...4 {
                     f.clock.date = submitted.addingTimeInterval(Double(minute) * 60)
@@ -259,7 +245,6 @@ private enum HistoryDeliveryTests {
                 let f = try Fixture(reachable: false)
                 let old = f.session.outstandingUserInfoTransfers[0]
                 old.isFinished = true
-                f.sync.transferFinished(old.userInfo, error: Libre2HistoryError.unavailable)
                 f.sync.flush()
                 expect(f.session.outstandingUserInfoTransfers.isEmpty)
                 f.clock.date.addTimeInterval(300)
@@ -267,75 +252,22 @@ private enum HistoryDeliveryTests {
                 expect(f.session.outstandingUserInfoTransfers.count == 1)
                 let retryDate = f.disk.lastBackgroundSubmission
                 f.clock.date.addTimeInterval(30)
-                f.sync.transferFinished(old.userInfo, error: nil)
                 expect(f.disk.lastBackgroundSubmission == retryDate)
                 // An outstanding transfer remains with WCSession even after the interval.
                 f.clock.date.addTimeInterval(600)
                 f.sync.flush()
                 expect(f.session.outstandingUserInfoTransfers.count == 1)
             }),
-            ("Background diagnostics identify submission and changing backlog without repeated waiting logs", {
-                let f = try Fixture(reachable: false)
-                let batch = f.disk.batch!
-                let submitted = Libre2ActivityLog.shared.deliveryEvents.last!
-                expect(submitted.event == "Watch background submitted")
-                expect(submitted.details.contains("batch=\(batch.id.uuidString.prefix(8))"))
-                expect(submitted.details.contains("outstanding=1") && submitted.details.contains("reason=phone unreachable"))
-                f.sync.flush()
-                let count = Libre2ActivityLog.shared.deliveryEvents.count
-                f.sync.flush()
-                expect(Libre2ActivityLog.shared.deliveryEvents.count == count)
-                let newer = Libre2HistoryReading(sessionID: f.current.sessionID, sensorUID: f.current.sensorUID,
-                    sensorMinute: 101, date: Date(), glucose: 115)
-                try f.queue.append(newer)
-                f.sync.flush()
-                let waiting = Libre2ActivityLog.shared.deliveryEvents.last!
-                expect(waiting.event == "Watch history waiting")
-                expect(waiting.details.contains("pending=3 waitingBehind=1 newestPendingMinute=101"))
-                expect(waiting.details.contains("reason=background transfer outstanding transferring=true"))
-                expect(Libre2ActivityLog.shared.deliveryEvents.count == count + 2)
-                expect(f.disk.batch == batch && f.session.outstandingUserInfoTransfers.count == 1)
-                expect(f.session.requests.isEmpty && f.session.latestRequests.isEmpty)
-            }),
-            ("Background completion and errors are observations, never save acknowledgements or retries", {
-                for error in [nil, NSError(domain: "WCErrorDomain", code: 7007)] as [Error?] {
-                    let f = try Fixture(reachable: false)
-                    let transfer = f.session.outstandingUserInfoTransfers[0]
-                    let before = f.disk
-                    transfer.isFinished = true
-                    transfer.isTransferring = false
-                    f.sync.transferFinished(transfer.userInfo, error: error)
-                    let finished = Libre2ActivityLog.shared.deliveryEvents.last!
-                    expect(finished.event == "Watch background finished")
-                    expect(finished.details.contains("awaitingAcknowledgement=true"))
-                    expect(finished.details.contains(error == nil ? "transport completed" : "WCErrorDomain 7007"))
-                    expect(finished.details.contains("outstanding=0"))
-                    expect(f.disk == before && f.session.outstandingUserInfoTransfers.isEmpty)
-                    expect(f.session.requests.isEmpty && f.session.latestRequests.isEmpty)
-                    expect(f.sync.receive(try Libre2HistoryAcknowledgement(batch: before.batch!).dictionary))
-                    f.sync.transferFinished(transfer.userInfo, error: error)
-                    expect(Libre2ActivityLog.shared.deliveryEvents.last!.details.contains("awaitingAcknowledgement=false"))
-                    expect(f.disk.pending.isEmpty)
-                    let count = Libre2ActivityLog.shared.deliveryEvents.count
-                    f.sync.transferFinished(["ordinary payload": true], error: error)
-                    expect(Libre2ActivityLog.shared.deliveryEvents.count == count)
-                    // An early callback must not load the journal just for diagnostics.
-                    Libre2WatchHistorySync().transferFinished(transfer.userInfo, error: nil)
-                    expect(Libre2ActivityLog.shared.deliveryEvents.last!.details.contains("awaitingAcknowledgement=unknown"))
-                }
-            }),
-            ("Background cancellation is logged only after a persisted batch resolution", {
+            ("Background cancellation occurs only after a persisted batch resolution", {
                 let f = try Fixture(reachable: false)
                 let transfer = f.session.outstandingUserInfoTransfers[0]
                 let acknowledgement = try Libre2HistoryAcknowledgement(batch: f.disk.batch!).dictionary
                 f.failPersistence = true
                 expect(f.sync.receive(acknowledgement))
                 expect(!transfer.isCancelled)
-                expect(!Libre2ActivityLog.shared.deliveryEvents.contains { $0.event == "Watch background cancel requested" })
                 f.failPersistence = false
                 transfer.onCancel = {
                     expect(f.disk.batch == nil && f.disk.pending.isEmpty)
-                    expect(Libre2ActivityLog.shared.deliveryEvents.last!.event == "Watch background cancel requested")
                 }
                 expect(f.sync.receive(acknowledgement))
                 expect(transfer.isCancelled)
@@ -389,11 +321,7 @@ private enum HistoryDeliveryTests {
                 f.session.onSend = { _ in expect(f.disk.pending.last?.sensorMinute == 101) }
                 f.sync.collect(sample, sensorMinute: 101, session: session)
                 expect(f.session.latestRequests.count == 2 && f.disk.pending.count == 3)
-                let events = Libre2ActivityLog.shared.deliveryEvents.filter { $0.reading.sensorMinute == 101 }
-                expect(events.map(\.event) == ["Watch collected and stored", "Watch latest context published", "Watch latest send"])
-                expect(events.allSatisfy { $0.details == "foreground=false activated=true reachable=true" })
                 f.session.latestRequests[1].error(Libre2HistoryError.unavailable)
-                expect(Libre2ActivityLog.shared.deliveryEvents.last?.event == "Watch latest send failed")
             }),
             ("Interactive rejection retains unmatched readings before sending the valid remainder", {
                 let f = try Fixture()

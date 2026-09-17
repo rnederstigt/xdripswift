@@ -51,7 +51,6 @@ class NotificationController: WKUserNotificationHostingController<NotificationVi
     }
     
     override func didReceive(_ notification: UNNotification) {
-        Libre2LifecycleDiagnostics.recordNotification("Watch notification received", identifier: notification.request.identifier)
         // pull the userInfo dictionary from the received notification
         let userInfo = notification.request.content.userInfo
         

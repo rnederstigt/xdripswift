@@ -8,7 +8,7 @@ Temporary build products are removed automatically, outside the repository.
 from pathlib import Path
 import argparse
 import subprocess
-import tempfile
+from swift_test_runner import run_swift, test_directory
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--baseline', default='53b3d6bf1b550c99b19c3d5d2c2f80dd226465d8')
@@ -97,9 +97,8 @@ direct.deliverDirect(Libre2ReadingBatch(values: [0], dates: [now.timeIntervalSin
 precondition(direct.complicationUpdates == 1)
 print("Direct samples: valid refreshes once; malformed sample rejected. Relay blocked while direct.")
 """
-with tempfile.TemporaryDirectory(prefix='direct-libre-relay-') as directory:
-    w = Path(directory)
+with test_directory('direct-libre-relay-') as w:
     (w/'main.swift').write_text(code)
-    subprocess.run(['xcrun', 'swiftc', '-module-cache-path', str(w/'module-cache'),
-                    str(w/'main.swift'), '-o', str(w/'relay-probe')], check=True)
-    subprocess.run([str(w/'relay-probe')], check=True)
+    run_swift(w/'relay-probe', [
+        w/'main.swift',
+    ])

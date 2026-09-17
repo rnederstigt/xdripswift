@@ -7,8 +7,7 @@ not watchOS radio behaviour; also build with the real Watch SDK and test on devi
 All compiler products live in an automatically removed temporary directory.
 """
 from pathlib import Path
-import subprocess
-import tempfile
+from swift_test_runner import run_swift, test_directory
 
 addon = Path(__file__).resolve().parents[1]
 collector = addon / "Watch/BluetoothTransmitter/Libre2WatchCollector.swift"
@@ -30,7 +29,7 @@ gesture = """
 final class DirectMode {
     var isDirect = false
     var retries = 0
-    func retryConnection() { retries += 1 }
+    func restartConnection() { retries += 1 }
 }
 final class WatchStateModel {
     let directLibre = DirectMode()
@@ -38,17 +37,15 @@ final class WatchStateModel {
     func requestWatchStateUpdate() { phoneRequests += 1 }
 """ + method(extension, "refreshAfterDoubleTap") + "\n}\n"
 
-with tempfile.TemporaryDirectory(prefix="direct-libre-reconnect-") as directory:
-    work = Path(directory)
+with test_directory("direct-libre-reconnect-") as work:
     source = work / collector.name
     source.write_text(collector.read_text().replace("import CoreBluetooth\n", "", 1))
     routing = work / "GestureRouting.swift"
     routing.write_text(gesture)
     executable = work / "reconnect-tests"
-    subprocess.run([
-        "xcrun", "swiftc", "-swift-version", "5", "-D", "LIBRE2_RECONNECT_TESTS",
-        "-module-cache-path", str(work / "module-cache"),
-        *map(str, sorted((addon / "Shared").rglob("*.swift"))), str(source), str(routing),
-        str(addon / "Tests/Libre2WatchReconnectTests.swift"), "-o", str(executable)
-    ], check=True)
-    subprocess.run([str(executable)], check=True)
+    run_swift(executable, [
+        *map(str, sorted((addon / "Shared").rglob("*.swift"))),
+        source,
+        routing,
+        addon / "Tests/Libre2WatchReconnectTests.swift",
+    ], flags=["-swift-version", "5", "-D", "LIBRE2_RECONNECT_TESTS"])

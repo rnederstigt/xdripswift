@@ -25,7 +25,7 @@ extension Libre2Owner {
         case .watch: return Texts_DirectLibre.watchOwnsLibre
         case .returnRequested: return Texts_DirectLibre.returnRequested
         case .returningToPhone, .releasingWatch: return Texts_DirectLibre.returning
-        case .reclaimingPhone, .verifyingPhone, .failed: return Texts_DirectLibre.ownershipUnresolved
+        case .failed: return Texts_DirectLibre.ownershipUnresolved
         }
     }
 }

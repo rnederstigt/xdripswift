@@ -232,23 +232,28 @@ private enum ReconnectTests {
                 precondition(Libre2Core.readBits(decoded, 0, 0, 14) == 0)
                 f.deliverReading(invalid)
                 DispatchQueue.main.advance(300)
-                precondition(f.readings == 0 && f.central.cancellations == 0 && f.collector.isConnected)
+                precondition(f.readings == 0 && f.central.cancellations == 0 && f.collector.connectionState == .connected)
                 f.deliverReading()
                 precondition(f.readings == 1 && f.disk.session!.unlockCount == 18 && f.peripheral.writes.count == 1)
             }),
-            ("Scan stays active; repeated taps do not restart it", {
+            ("Manual restart cancels a scan and coalesces taps until the new attempt", {
                 let f = Fixture()
                 f.collector.start()
+                precondition(f.collector.connectionState == .scanning)
                 DispatchQueue.main.advance(300)
-                f.collector.retryConnection()
                 precondition(f.central.scans == 1 && f.central.isScanning)
+                f.collector.restartConnection()
+                f.collector.restartConnection()
+                precondition(f.collector.connectionState == .restarting && !f.central.isScanning)
+                DispatchQueue.main.advance(0)
+                precondition(f.central.scans == 2 && f.central.isScanning)
+                precondition(f.collector.connectionState == .scanning)
             }),
             ("Scan-discovered connect times out after five seconds, then scans after confirmed disconnect", {
                 let f = Fixture()
                 f.collector.start(); f.discover()
                 DispatchQueue.main.advance(4)
                 precondition(f.central.cancellations == 0)
-                f.collector.retryConnection()
                 DispatchQueue.main.advance(1)
                 precondition(f.central.cancellations == 1 && f.central.scans == 1)
                 f.disconnect(); DispatchQueue.main.advance(0)
@@ -258,7 +263,7 @@ private enum ReconnectTests {
                 let f = Fixture(saved: true)
                 f.collector.start()
                 DispatchQueue.main.advance(600)
-                f.collector.retryConnection()
+                precondition(f.collector.connectionState == .connecting)
                 precondition(f.central.connections == 1 && f.central.scans == 0 && f.central.cancellations == 0)
             }),
             ("A late connection callback cannot revive an attempt already being cancelled", {
@@ -292,24 +297,26 @@ private enum ReconnectTests {
                 f.connect(); f.subscribe()
                 precondition(f.disk.session!.unlockCount == 19 && f.peripheral.writes.count == 2)
             }),
-            ("Fresh connection is left alone; stale manual retry waits for disconnect and runs once", {
+            ("Manual restart interrupts a fresh connection once and advances the persisted counter", {
                 let f = Fixture()
                 f.startReceiving()
-                f.collector.retryConnection()
-                precondition(f.central.cancellations == 0)
-                f.collector.retryConnection(at: .distantFuture)
-                f.collector.retryConnection(at: .distantFuture)
+                let historyCount = f.readings
+                f.collector.restartConnection()
+                f.collector.restartConnection()
+                precondition(f.collector.connectionState == .restarting)
                 precondition(f.central.cancellations == 1 && f.central.connections == 1)
+                precondition(f.disk.session!.unlockCount == 18 && f.readings == historyCount)
                 f.disconnect(); DispatchQueue.main.advance(0)
-                precondition(f.central.connections == 2)
+                precondition(f.central.connections == 2 && f.collector.connectionState == .connecting)
+                f.connect(); f.subscribe()
+                precondition(f.disk.session!.unlockCount == 19 && f.peripheral.writes.count == 2)
             }),
             ("Manual retry recovers a connected session that never produced its first reading", {
                 let f = Fixture()
                 f.collector.start(); f.discover(); f.connect(); f.subscribe()
-                f.collector.retryConnection()
-                precondition(f.central.cancellations == 0)
-                f.collector.retryConnection(at: .distantFuture)
-                precondition(f.central.cancellations == 1)
+                precondition(f.collector.connectionState == .connected)
+                f.collector.restartConnection()
+                precondition(f.central.cancellations == 1 && f.collector.connectionState == .restarting)
             }),
             ("Manual retry bypasses protocol-failure backoff without duplicating the later retry", {
                 let f = Fixture()
@@ -318,27 +325,82 @@ private enum ReconnectTests {
                 f.collector.peripheral(f.peripheral, didDiscoverServices: nil)
                 f.disconnect()
                 precondition(f.central.connections == 1)
-                f.collector.retryConnection()
+                f.collector.restartConnection()
+                DispatchQueue.main.advance(0)
                 precondition(f.central.connections == 2)
                 DispatchQueue.main.advance(10)
                 precondition(f.central.connections == 2)
             }),
+            ("Manual restart cancels a pending known-peripheral connection", {
+                let f = Fixture(saved: true)
+                f.collector.start()
+                f.collector.restartConnection(); f.collector.restartConnection()
+                precondition(f.central.connections == 1 && f.central.cancellations == 1)
+                DispatchQueue.main.advance(60)
+                precondition(f.central.connections == 1)
+                f.disconnect(); DispatchQueue.main.advance(0)
+                precondition(f.central.connections == 2 && f.collector.connectionState == .connecting)
+            }),
+            ("Manual restart ignores late service, subscription and frame callbacks", {
+                let f = Fixture()
+                f.collector.start(); f.discover(); f.connect()
+                f.collector.restartConnection()
+                // Even an already queued callback reporting connected cannot unlock this attempt.
+                f.peripheral.state = .connected
+                f.subscribe(); f.deliverReading()
+                precondition(f.peripheral.writes.isEmpty && f.peripheral.notificationRequests == 0 && f.readings == 0)
+                precondition(f.disk.session!.unlockCount == 17)
+            }),
+            ("Manual restart adopts a protocol cancellation without a duplicate cancel", {
+                let f = Fixture()
+                f.collector.start(); f.discover(); f.connect()
+                f.peripheral.services = []
+                f.collector.peripheral(f.peripheral, didDiscoverServices: nil)
+                f.collector.restartConnection(); f.collector.restartConnection()
+                precondition(f.central.cancellations == 1 && f.collector.connectionState == .restarting)
+                f.disconnect(); DispatchQueue.main.advance(0)
+                precondition(f.central.connections == 2)
+                DispatchQueue.main.advance(10)
+                precondition(f.central.connections == 2)
+            }),
+            ("A cancelled pending connection can finish through didFailToConnect", {
+                let f = Fixture(saved: true)
+                f.collector.start(); f.collector.restartConnection()
+                f.peripheral.state = .disconnected
+                f.collector.centralManager(f.central, didFailToConnect: f.peripheral, error: nil)
+                DispatchQueue.main.advance(0)
+                precondition(f.central.connections == 2 && f.collector.connectionState == .connecting)
+            }),
+            ("Connection state reports progress before the first reading and Bluetooth unavailability", {
+                let f = Fixture()
+                var states: [Libre2WatchCollector.ConnectionState] = []
+                f.collector.onConnectionChanged = { states.append(f.collector.connectionState) }
+                f.collector.start(); f.discover(); f.connect()
+                precondition(states == [.scanning, .connecting, .connected])
+                precondition(f.readings == 0 && f.collector.connectionState == .connected)
+                f.central.state = .poweredOff
+                f.collector.centralManagerDidUpdateState(f.central)
+                f.collector.restartConnection()
+                precondition(f.collector.connectionState == .bluetoothUnavailable)
+                precondition(!f.collector.connectionState.isConnecting && f.central.cancellations == 0)
+                precondition(Libre2WatchCollector.ConnectionState.restarting.isConnecting)
+            }),
             ("Every non-Watch owner blocks start and manual retry", {
                 for owner in [Libre2Owner.phone, .preparingWatch, .releasingPhone, .returningToPhone,
-                    .releasingWatch, .returnRequested, .reclaimingPhone, .verifyingPhone, .failed] {
+                    .releasingWatch, .returnRequested, .failed] {
                     let f = Fixture(owner: owner, saved: true)
-                    f.collector.start(); f.collector.retryConnection(at: .distantFuture)
+                    f.collector.start(); f.collector.restartConnection()
                     precondition(f.central.connections == 0 && f.central.scans == 0 && f.peripheral.writes.isEmpty)
                 }
             }),
             ("Phone return supersedes manual recovery and waits for confirmed disconnect", {
                 let f = Fixture()
                 f.startReceiving()
-                f.collector.retryConnection(at: .distantFuture)
+                f.collector.restartConnection()
                 try f.store.beginReturnToPhone(id: f.disk.session!.id)
                 var returned = false
                 f.collector.stop { returned = true }
-                f.collector.retryConnection(at: .distantFuture)
+                f.collector.restartConnection()
                 precondition(!returned)
                 f.disconnect(); DispatchQueue.main.advance(300)
                 precondition(returned && f.central.connections == 1)
@@ -363,14 +425,14 @@ private enum ReconnectTests {
             ("Bluetooth reset during manual cancellation does not disable future manual retries", {
                 let f = Fixture()
                 f.startReceiving()
-                f.collector.retryConnection(at: .distantFuture)
+                f.collector.restartConnection()
                 f.central.state = .poweredOff
                 f.collector.centralManagerDidUpdateState(f.central)
                 f.peripheral.state = .disconnected
                 f.central.state = .poweredOn
                 f.collector.centralManagerDidUpdateState(f.central)
                 f.connect(); f.subscribe()
-                f.collector.retryConnection(at: .distantFuture)
+                f.collector.restartConnection()
                 precondition(f.central.connections == 2 && f.central.cancellations == 2)
             }),
             ("Double tap preserves ordinary phone refresh and routes Direct mode to the collector", {

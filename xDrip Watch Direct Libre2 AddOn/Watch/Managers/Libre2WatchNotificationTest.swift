@@ -69,9 +69,6 @@ import SwiftUI
 final class Libre2NotificationTestController: WKUserNotificationHostingController<Libre2NotificationTestView> {
     override var body: Libre2NotificationTestView { Libre2NotificationTestView() }
 
-    override func didReceive(_ notification: UNNotification) {
-        Libre2LifecycleDiagnostics.recordNotification("Watch notification received", identifier: notification.request.identifier)
-    }
 }
 
 struct Libre2NotificationTestView: View {

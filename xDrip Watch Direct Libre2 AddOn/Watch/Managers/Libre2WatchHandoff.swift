@@ -7,7 +7,7 @@ final class Libre2WatchHandoff {
 
     // MARK: - Properties
 
-    var onStatus: (String) -> Void = { _ in }
+    var onChange: () -> Void = {}
     var onReadings: ([Libre2Sample], UInt16) -> Void = { _, _ in }
     var onCollectedReading: (Libre2Sample, UInt16, Libre2WatchSession) -> Void = { _, _, _ in }
 
@@ -15,16 +15,25 @@ final class Libre2WatchHandoff {
     private var collectorInstance: Libre2WatchCollector?
     private var lastReachability: Bool?
     private var returnRetryWorkItem: DispatchWorkItem?
-    private var revocationReplies: [([String: Any]) -> Void] = []
+    private var retirementReplies: [([String: Any]) -> Void] = []
 
     init(store: Libre2SessionStore = .shared) {
         self.store = store
     }
 
-    var isConnected: Bool { collectorInstance?.isConnected == true }
+    var connectionState: Libre2WatchCollector.ConnectionState {
+        if owner.isReturningToPhone || owner == .returnRequested { return .disconnecting }
+        guard owner.allowsWatchConnection else { return .inactive }
+        return collectorInstance?.connectionState ?? .inactive
+    }
     var indicatorText: String {
-        if isConnected { return Texts_DirectLibre.directConnected }
-        return isDirect ? Texts_DirectLibre.directDisconnected : Texts_DirectLibre.phoneRelay
+        switch owner {
+        case .phone: return Texts_DirectLibre.phoneRelay
+        case .preparingWatch, .releasingPhone: return Texts_DirectLibre.prepared
+        case .watch: return connectionState.text
+        case .returnRequested, .returningToPhone, .releasingWatch: return Texts_DirectLibre.returning
+        case .failed: return Texts_DirectLibre.resetOnPhone
+        }
     }
 
     var owner: Libre2Owner { store.snapshot.owner }
@@ -54,8 +63,7 @@ final class Libre2WatchHandoff {
         }
         collector.onConnectionChanged = { [weak self] in
             // Refresh immediately, including before first glucose and during a return.
-            guard let self else { return }
-            self.onStatus(self.indicatorText)
+            self?.onChange()
         }
         collector.onReadings = { [weak self] samples, sensorAge in
             self?.onReadings(samples, sensorAge)
@@ -69,14 +77,18 @@ final class Libre2WatchHandoff {
 
     private func publishStatus(_ status: String) {
         Libre2ActivityLog.shared.record(status)
-        onStatus(status)
+        onChange()
     }
 
     // MARK: - Restore persisted ownership
 
-    func retryConnection() {
-        guard owner.allowsWatchConnection else { return }
-        collector.retryConnection()
+    func restartConnection() {
+        guard owner.allowsWatchConnection else {
+            // A tap cannot activate Prepared or reverse a return/NFC reset.
+            publishStatus(indicatorText)
+            return
+        }
+        collector.restartConnection()
     }
 
     func restore() {
@@ -99,40 +111,36 @@ final class Libre2WatchHandoff {
 
     func receive(_ dictionary: [String: Any], reply: @escaping ([String: Any]) -> Void) {
         do {
-            if let ids = try Libre2HandoffMessage.retiredIDs(from: dictionary),
-               let retired = try store.retireOnWatch(ids) {
+            // Validate the complete message before persisting retirements or stopping Bluetooth.
+            let message = dictionary[Libre2HandoffMessage.key] == nil ? nil : try Libre2HandoffMessage.decode(dictionary)
+            let retiredIDs = try Libre2HandoffMessage.retiredIDs(from: dictionary) ?? []
+            if !retiredIDs.isEmpty, let retired = try store.retireOnWatch(retiredIDs) {
                 publishStatus("Phone retired the Direct Libre handoff; disconnecting Watch.")
-                stopRevokedSession(retired) { response in
+                stopRetiredSession(retired) { response in
                     guard response["error"] == nil else { reply(response); return }
-                    self.receiveHandoff(dictionary, reply: reply)
+                    self.receiveHandoff(message, reply: reply)
                 }
-                return
+            } else {
+                receiveHandoff(message, reply: reply)
             }
-            receiveHandoff(dictionary, reply: reply)
         } catch {
             reply(["error": error.localizedDescription])
             publishStatus(Texts_DirectLibre.failed(error.localizedDescription))
         }
     }
 
-    private func receiveHandoff(_ dictionary: [String: Any], reply: @escaping ([String: Any]) -> Void) {
-        guard dictionary[Libre2HandoffMessage.key] != nil else {
+    private func receiveHandoff(_ message: Libre2HandoffMessage?, reply: @escaping ([String: Any]) -> Void) {
+        guard let message else {
             reply(["retiredHandoffsApplied": true])
             return
         }
         do {
-            let message = try Libre2HandoffMessage.decode(dictionary)
             switch message.kind {
             case .prepare:
                 try store.prepare(message.session)
                 publishStatus(Texts_DirectLibre.prepared)
             case .activate:
                 try activateCollector(for: message.session)
-            case .revoke:
-                if try store.revokeOnWatch(message.session) {
-                    stopRevokedSession(message.session, reply: reply)
-                    return
-                }
             case .requestReturn:
                 try store.prepareRequestedReturn(message.session)
                 returnToPhone()
@@ -189,7 +197,7 @@ final class Libre2WatchHandoff {
     }
 
     private func handleReturnReady(_ session: Libre2WatchSession) {
-        guard owner == .returningToPhone, store.snapshot.session?.id == session.id else { return }
+        guard store.snapshot.matches(id: session.id, owner: .returningToPhone) else { return }
         do {
             try store.beginWatchRelease(id: session.id)
             disconnectWatchAndCommitReturn(session)
@@ -199,17 +207,17 @@ final class Libre2WatchHandoff {
     }
 
     private func disconnectWatchAndCommitReturn(_ session: Libre2WatchSession) {
-        let disconnected = {
-            self.commitReturn(session)
-        }
+        disconnectWatch { self.commitReturn(session) }
+    }
 
-        // This barrier applies to retries too. After restart the collector retrieves the
-        // persisted peripheral and cancels it before allowing RETURN_COMMIT.
+    /// Both normal return and NFC retirement use the same local release barrier.
+    /// Prepared sessions have never connected. After a restart, the collector retrieves
+    /// and cancels its saved peripheral before invoking the completion.
+    private func disconnectWatch(completion: @escaping () -> Void) {
         if store.snapshot.watchMayHaveConnected {
-            collector.stop(completion: disconnected)
+            collector.stop(completion: completion)
         } else {
-            // A return directly from Prepared has never been allowed to connect.
-            disconnected()
+            completion()
         }
     }
 
@@ -229,12 +237,12 @@ final class Libre2WatchHandoff {
 
     /// These retries finish a return already requested by the phone; they never initiate a takeover.
     private func resumePendingReturn() {
-        guard [.returningToPhone, .releasingWatch].contains(owner),
+        guard owner.isReturningToPhone,
             let session = store.snapshot.session
         else { return }
         if store.snapshot.retiredIDs.contains(session.id) {
             // An interrupted NFC revocation needs only a local disconnect, not RETURN_COMMIT.
-            stopRevokedSession(session) { _ in }
+            stopRetiredSession(session) { _ in }
         } else {
             returnToPhone()
         }
@@ -242,7 +250,7 @@ final class Libre2WatchHandoff {
 
     private func scheduleReturnRetry() {
         returnRetryWorkItem?.cancel()
-        guard [.returningToPhone, .releasingWatch].contains(owner),
+        guard owner.isReturningToPhone,
             let session = store.snapshot.session,
             !store.snapshot.retiredIDs.contains(session.id)
         else { return }
@@ -255,14 +263,14 @@ final class Libre2WatchHandoff {
         DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
     }
 
-    private func stopRevokedSession(
+    private func stopRetiredSession(
         _ session: Libre2WatchSession, reply: @escaping ([String: Any]) -> Void
     ) {
         returnRetryWorkItem?.cancel()
         // Live and queued retirement may arrive together. Share the disconnect barrier
         // rather than replacing the collector's completion and losing a waiting PREPARE.
-        revocationReplies.append(reply)
-        guard revocationReplies.count == 1 else { return }
+        retirementReplies.append(reply)
+        guard retirementReplies.count == 1 else { return }
         let finish = {
             let response: [String: Any]
             do {
@@ -270,11 +278,11 @@ final class Libre2WatchHandoff {
                 self.publishStatus(Texts_DirectLibre.phoneRelay)
                 response = ["ready": session.id.uuidString]
             } catch { response = ["error": error.localizedDescription] }
-            let replies = self.revocationReplies
-            self.revocationReplies.removeAll()
+            let replies = self.retirementReplies
+            self.retirementReplies.removeAll()
             replies.forEach { $0(response) }
         }
-        if store.snapshot.watchMayHaveConnected { collector.stop(completion: finish) } else { finish() }
+        disconnectWatch(completion: finish)
     }
 
     // MARK: - WatchConnectivity
@@ -295,7 +303,7 @@ final class Libre2WatchHandoff {
                 replyHandler: { reply in
                     DispatchQueue.main.async {
                         // Ignore replies from a phase superseded by cancellation or a completed return.
-                        guard self.owner == expectedOwner, self.store.snapshot.session?.id == session.id else {
+                        guard self.store.snapshot.matches(id: session.id, owner: expectedOwner) else {
                             return
                         }
                         guard reply["ready"] as? String == session.id.uuidString else {
@@ -309,7 +317,7 @@ final class Libre2WatchHandoff {
                 errorHandler: { error in
                     DispatchQueue.main.async {
                         // Ignore replies from a phase superseded by cancellation or a completed return.
-                        guard self.owner == expectedOwner, self.store.snapshot.session?.id == session.id else {
+                        guard self.store.snapshot.matches(id: session.id, owner: expectedOwner) else {
                             return
                         }
                         self.publishStatus(Texts_DirectLibre.returnFailed(error.localizedDescription))

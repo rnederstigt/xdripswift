@@ -7,13 +7,7 @@ enum Libre2PhoneSwitchAction: Equatable {
 
 extension Libre2OwnershipRecord {
     var phoneSwitchAction: Libre2PhoneSwitchAction {
-        switch owner {
-        case .phone:
-            return .switchToWatch
-        case .preparingWatch, .releasingPhone, .watch, .returnRequested, .returningToPhone:
-            return session == nil ? .unavailable : .returnToPhone
-        case .reclaimingPhone, .verifyingPhone, .releasingWatch, .failed:
-            return .unavailable
-        }
+        if owner == .phone { return .switchToWatch }
+        return owner.canRequestReturn && session != nil ? .returnToPhone : .unavailable
     }
 }

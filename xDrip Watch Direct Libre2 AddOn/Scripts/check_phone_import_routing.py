@@ -6,7 +6,7 @@ Core Data and export policies are covered separately by hosted tests and device 
 """
 from pathlib import Path
 import subprocess
-import tempfile
+from swift_test_runner import run_swift, test_directory
 
 addon = Path(__file__).resolve().parents[1]
 repo = addon.parent
@@ -180,15 +180,14 @@ final class RootApplicationCoordinator {
     }
 }
 '''
-with tempfile.TemporaryDirectory(prefix='direct-libre-import-') as directory:
-    work = Path(directory)
+with test_directory('direct-libre-import-') as work:
     main = work / 'ImportRouting.swift'
     main.write_text(harness)
     executable = work / 'import-tests'
-    subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-module-cache-path', str(work / 'module-cache'),
-                    str(addon / 'Shared/DataModels/Libre2PhoneHistoryUpdate.swift'),
-                    str(main), '-o', str(executable)], check=True)
-    subprocess.run([str(executable)], check=True)
+    run_swift(executable, [
+        addon / 'Shared/DataModels/Libre2PhoneHistoryUpdate.swift',
+        main,
+    ], flags=['-swift-version', '5'])
 
 # Execute the actual delayed-buffer adapter with database/settings doubles. This
 # checks the values passed to the existing sharing manager, not an app-group write.
@@ -297,13 +296,13 @@ enum Libre2PhoneReadingProcessing {
     }
 }
 '''
-with tempfile.TemporaryDirectory(prefix='direct-libre-sharing-') as directory:
-    work = Path(directory)
+with test_directory('direct-libre-sharing-') as work:
     main = work / 'Sharing.swift'
     main.write_text(sharing)
     executable = work / 'sharing-tests'
-    subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-module-cache-path', str(work / 'module-cache'),
-                    str(repo / 'xDrip/BluetoothTransmitter/CGM/Generic/GlucoseData.swift'),
-                    str(repo / 'xDrip/Managers/Loop/BgReading+LoopShare.swift'),
-                    str(repo / 'xDrip/Constants/ConstantsShareWithLoop.swift'), str(main), '-o', str(executable)], check=True)
-    subprocess.run([str(executable)], check=True)
+    run_swift(executable, [
+        repo / 'xDrip/BluetoothTransmitter/CGM/Generic/GlucoseData.swift',
+        repo / 'xDrip/Managers/Loop/BgReading+LoopShare.swift',
+        repo / 'xDrip/Constants/ConstantsShareWithLoop.swift',
+        main,
+    ], flags=['-swift-version', '5'])

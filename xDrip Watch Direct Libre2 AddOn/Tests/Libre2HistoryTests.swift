@@ -11,6 +11,46 @@ final class Libre2HistoryTests: XCTestCase {
                              date: now.addingTimeInterval(Double(Int(minute) - 100) * 60), glucose: glucose)
     }
 
+    func testSharedJournalWriterKeepsFilesIndependentAndPreservesExistingDataOnEncodingFailure() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ownershipURL = directory.appendingPathComponent("ownership.json")
+        let historyURL = directory.appendingPathComponent("watch-history.json")
+        let record = Libre2OwnershipRecord(owner: .failed, retiredIDs: [sessionID])
+        try Libre2JournalFile.save(record, to: ownershipURL)
+        let queue = try Libre2HistoryQueue(url: historyURL)
+        try queue.append(reading())
+        XCTAssertEqual(Libre2SessionStore(fileURL: ownershipURL).snapshot, record)
+        XCTAssertEqual(try Libre2HistoryQueue(url: historyURL).state.pending, [reading()])
+        let before = try Data(contentsOf: historyURL)
+        XCTAssertThrowsError(try Libre2JournalFile.save([Double.nan], to: historyURL))
+        XCTAssertEqual(try Data(contentsOf: historyURL), before)
+        XCTAssertEqual(Libre2SessionStore(fileURL: ownershipURL).snapshot, record)
+    }
+
+    func testJournalFailuresRetainCallerSpecificRecoveryBehaviour() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let corrupt = directory.appendingPathComponent("corrupt.json")
+        try Data("invalid JSON".utf8).write(to: corrupt)
+        XCTAssertEqual(Libre2SessionStore(fileURL: corrupt).snapshot.owner, .failed)
+        XCTAssertThrowsError(try Libre2HistoryQueue(url: corrupt))
+        // A file in place of the parent directory forces a real write failure.
+        let blocked = corrupt.appendingPathComponent("journal.json")
+        let queue = try Libre2HistoryQueue(url: blocked)
+        XCTAssertThrowsError(try queue.append(reading()))
+        XCTAssertTrue(queue.state.pending.isEmpty)
+        XCTAssertEqual(Libre2SessionStore(fileURL: blocked).snapshot.owner, .phone)
+        // Missing journals have ordinary phone ownership, so NFC alone need not write.
+        // Exercise persistence through a current reset record instead.
+        let blockedStore = Libre2SessionStore(record: Libre2OwnershipRecord(owner: .failed)) {
+            try Libre2JournalFile.save($0, to: blocked)
+        }
+        XCTAssertThrowsError(try blockedStore.beginPhoneNFC(resetUnlockCode: 5000))
+        XCTAssertFalse(blockedStore.snapshot.owner.allowsPhoneConnection)
+    }
+
     func testBackgroundReservationSurvivesRestartWithoutAcknowledgingReadings() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -160,58 +200,22 @@ final class Libre2HistoryTests: XCTestCase {
         XCTAssertEqual(log.entries.count, Libre2ActivityLog.maximumEntries)
     }
 
-    func testDeliveryReportCorrelatesMeasurementsWithoutGlucoseOrCredentials() throws {
+    func testActivityReportIsChronologicalAndDormantOutsideExperiment() throws {
         let suite = "Libre2ActivityTests." + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let disabled = Libre2ActivityLog(defaults: defaults, shouldRecord: { false })
-        disabled.recordDelivery("Watch collected", reading: reading())
+        disabled.record("Watch connected")
         XCTAssertTrue(disabled.entries.isEmpty)
         let log = Libre2ActivityLog(defaults: defaults)
-        log.isTracingEnabled = true
-        log.recordDelivery("Watch collected", reading: reading(glucose: 650), details: "reachable=false")
+        log.record("Watch connected")
         let entry = try XCTUnwrap(log.entries.first)
-        XCTAssertTrue(entry.message.contains("sample=") && entry.message.contains("minute=100"))
-        XCTAssertTrue(entry.message.contains("handoff=\(sessionID.uuidString.prefix(8))"))
-        XCTAssertFalse(entry.message.contains("glucose") || entry.message.contains("unlock"))
-        XCTAssertFalse(entry.message.contains(reading().sensorKey))
-        let later = Libre2ActivityLog.Entry(id: UUID(), date: entry.date.addingTimeInterval(30), message: "Phone saved")
+        let later = Libre2DiagnosticEntry(id: UUID(), date: entry.date.addingTimeInterval(30), message: "Phone saved")
         let report = Libre2ActivityLog.report(phone: [later], watch: [entry], capturedAt: later.date)
         XCTAssertTrue(report.contains("(UTC)") && report.contains("Watch snapshot:"))
         let watchRange = try XCTUnwrap(report.range(of: "[Watch]"))
         let phoneRange = try XCTUnwrap(report.range(of: "[iPhone]"))
         XCTAssertLessThan(watchRange.lowerBound, phoneRange.lowerBound)
-    }
-
-    func testDetailedTracingIsOptInPersistedAndConfirmedByWatch() throws {
-        let suite = "Libre2ActivityTests." + UUID().uuidString
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let log = Libre2ActivityLog(defaults: defaults)
-        XCTAssertFalse(log.isTracingEnabled)
-        var formatted = false
-        func detail() -> String { formatted = true; return "Trace detail" }
-        log.recordTrace(detail())
-        log.recordDelivery("Watch collected", reading: reading())
-        XCTAssertFalse(formatted)
-        XCTAssertTrue(log.entries.isEmpty)
-        log.record("Connected")
-        XCTAssertEqual(log.entries.count, 1)
-        var reply: [String: Any] = [:]
-        log.receive([Libre2ActivityLog.requestKey: true, Libre2ActivityLog.tracingKey: true]) { reply = $0 }
-        XCTAssertEqual(reply[Libre2ActivityLog.tracingKey] as? Bool, true)
-        XCTAssertTrue(Libre2ActivityLog(defaults: defaults).isTracingEnabled)
-        log.recordTrace(detail())
-        XCTAssertTrue(formatted)
-        XCTAssertEqual(log.entries.last?.message, "Trace detail")
-        log.receive([Libre2ActivityLog.requestKey: true, Libre2ActivityLog.tracingKey: "invalid"]) { reply = $0 }
-        XCTAssertNotNil(reply["error"])
-        XCTAssertTrue(log.isTracingEnabled)
-        log.receive([Libre2ActivityLog.requestKey: true, Libre2ActivityLog.tracingKey: false]) { reply = $0 }
-        XCTAssertEqual(reply[Libre2ActivityLog.tracingKey] as? Bool, false)
-        let count = log.entries.count
-        log.recordDelivery("Phone received", reading: reading())
-        XCTAssertEqual(log.entries.count, count)
     }
 
     func testAppendFailureDoesNotAdvanceMinuteOrLoseRetry() throws {
@@ -497,20 +501,24 @@ final class Libre2HistoryTests: XCTestCase {
         XCTAssertTrue(disk.unresolved.isEmpty)
     }
 
-    func testLegacyQueueDecodingPreservesAnAlreadyBlockedBatch() throws {
+    func testObsoleteQueueJournalIsRejectedWithoutReplacingPendingReadings() throws {
         let queue = Libre2HistoryQueue { _ in }
         try queue.append(reading())
-        let batch = try XCTUnwrap(queue.nextBatch())
-        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(queue.state)) as? [String: Any])
-        legacy.removeValue(forKey: "unresolved")
-        let state = try JSONDecoder().decode(Libre2HistoryQueue.State.self, from: JSONSerialization.data(withJSONObject: legacy))
-        XCTAssertEqual(state.batch, batch)
-        XCTAssertEqual(state.pending, queue.state.pending)
-        XCTAssertEqual(state.lastCollectedMinute, queue.state.lastCollectedMinute)
-        XCTAssertTrue(state.unresolved.isEmpty)
-        let restarted = Libre2HistoryQueue(state: state) { _ in }
-        try restarted.retainUnresolved(.init(batchID: batch.id, readingIDs: [reading().id]))
-        XCTAssertNil(try restarted.nextBatch())
-        XCTAssertEqual(restarted.state.unresolved, [reading()])
+        _ = try XCTUnwrap(queue.nextBatch())
+        let current = try JSONEncoder().encode(queue.state)
+        XCTAssertEqual(try JSONDecoder().decode(Libre2HistoryQueue.State.self, from: current), queue.state)
+
+        var obsolete = try XCTUnwrap(JSONSerialization.jsonObject(with: current) as? [String: Any])
+        obsolete.removeValue(forKey: "unresolved")
+        let data = try JSONSerialization.data(withJSONObject: obsolete)
+        XCTAssertThrowsError(try JSONDecoder().decode(Libre2HistoryQueue.State.self, from: data))
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("watch-history.json")
+        try data.write(to: url)
+        XCTAssertThrowsError(try Libre2HistoryQueue(url: url))
+        XCTAssertEqual(try Data(contentsOf: url), data, "Unsupported journals must not be silently reset")
     }
 }

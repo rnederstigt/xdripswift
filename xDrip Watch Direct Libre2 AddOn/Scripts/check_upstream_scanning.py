@@ -51,13 +51,16 @@ assert result == method(baseline, 'func nfcScanResult('), 'Original scan success
 for signature in ['func received(sensorUID:', 'func received(fram:', 'func nfcScanExpectedDevice(']:
     assert method(current, signature) == method(baseline, signature), signature
 
-# Nothing in the add-on may introduce a modal sensor alert or a second NFC reader.
+# Sensor/transport code must not introduce scan-time dialogs or another NFC reader.
+# Explicit experimental-page help and user-requested cleanup confirmations are permitted.
 addon = repo / 'xDrip Watch Direct Libre2 AddOn'
 for file in addon.rglob('*.swift'):
     if 'Tests' in file.parts:
         continue
     source = file.read_text()
-    for forbidden in ['UIAlertController', '.alert(', '.confirmationDialog(', 'bluetoothTransmitterDelegate?.error', 'LibreNFC(libreNFCDelegate:', 'force: true']:
+    for forbidden in ['UIAlertController', 'bluetoothTransmitterDelegate?.error', 'LibreNFC(libreNFCDelegate:', 'force: true']:
         assert forbidden not in source, (file, forbidden)
+    if file.parent != addon / 'iPhone/SwiftUIViews':
+        assert '.alert(' not in source and '.confirmationDialog(' not in source, file
 print('Ordinary NFC reader, sensor callbacks, scan notices and retry UI match the upstream base outside the explicit reset hooks.')
-print('No add-on modal alert, second NFC reader or forced ordinary-mode activity logging.')
+print('No add-on scan-time modal, second NFC reader or forced ordinary-mode activity logging.')

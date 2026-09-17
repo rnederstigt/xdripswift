@@ -15,7 +15,7 @@ final class Libre2WatchConnectivityTasks: @unchecked Sendable {
     init(session: WCSession = .default) { self.session = session }
 
     /// Reserve before dispatching: hasContentPending can become false before main runs.
-    /// Nested receipts reserve their own work, including asynchronous revoke handling.
+    /// Nested receipts reserve their own work, including asynchronous retirement handling.
     func receive(_ action: @escaping () -> Void) {
         lock.lock()
         pendingReceipts += 1
@@ -32,8 +32,6 @@ final class Libre2WatchConnectivityTasks: @unchecked Sendable {
     @MainActor func handle() async {
         guard !Task.isCancelled else { return }
         let id = UUID()
-        Libre2LifecycleDiagnostics.recordSession("WC background task started", session: session,
-            details: "task=\(id.uuidString.prefix(8))")
         await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 waiters[id] = continuation
@@ -47,12 +45,11 @@ final class Libre2WatchConnectivityTasks: @unchecked Sendable {
             }
         } onCancel: {
             // SwiftUI cancels the task when its execution allowance expires.
-            Task { @MainActor in self.finish(id, cancelled: true) }
+            Task { @MainActor in self.finish(id) }
         }
     }
 
     private func stateChanged() {
-        Libre2LifecycleDiagnostics.recordSession("WC background task state changed", session: session)
         DispatchQueue.main.async { self.finishIfReady() }
     }
 
@@ -67,11 +64,9 @@ final class Libre2WatchConnectivityTasks: @unchecked Sendable {
         for id in Array(waiters.keys) { finish(id) }
     }
 
-    @MainActor private func finish(_ id: UUID, cancelled: Bool = false) {
+    @MainActor private func finish(_ id: UUID) {
         guard let continuation = waiters.removeValue(forKey: id) else { return }
         if waiters.isEmpty { observations.removeAll() }
-        Libre2LifecycleDiagnostics.recordSession("WC background task finished", session: session,
-            details: "task=\(id.uuidString.prefix(8)) cancelled=\(cancelled)")
         continuation.resume()
     }
 }

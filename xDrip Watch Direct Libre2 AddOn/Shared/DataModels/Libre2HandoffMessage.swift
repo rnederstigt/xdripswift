@@ -9,7 +9,6 @@ struct Libre2HandoffMessage: Codable {
         case returnPrepare
         case returnCommit
         case requestReturn
-        case revoke
     }
 
     static let key = "phoneControlledLibre2Handoff"

@@ -10,7 +10,6 @@ final class Libre2WatchHistorySync {
     private var lastAttempt: (id: UUID, date: Date)?
     private var lastLatestAttempt: (id: String, date: Date)?
     private var lastReachability: Bool?
-    private var lastWaitingState: String?
     private var activationObserver: NSObjectProtocol?
     private let now: () -> Date
 
@@ -27,7 +26,6 @@ final class Libre2WatchHistorySync {
     }
 
     func resume() {
-        Libre2ActivityLog.shared.recordTrace("Delivery: Watch resumed | \(deliveryState)")
         lastAttempt = nil
         lastLatestAttempt = nil
         flush()
@@ -37,12 +35,7 @@ final class Libre2WatchHistorySync {
         do {
             let reading = Libre2HistoryReading(sessionID: session.id, sensorUID: session.sensorUID,
                 sensorMinute: sensorMinute, date: sample.timeStamp, glucose: sample.glucoseLevelRaw)
-            let previousMinute = try outbox().state.lastCollectedMinute[reading.sensorKey]
             try outbox().append(reading)
-            if previousMinute.map({ $0 < sensorMinute }) ?? true {
-                Libre2ActivityLog.shared.recordDelivery("Watch collected and stored", reading: reading,
-                    details: deliveryState)
-            }
             flush()
         } catch { report(error) }
     }
@@ -62,37 +55,22 @@ final class Libre2WatchHistorySync {
             // Latest delivery is independent of every history batch and its callbacks.
             if reachable { try sendLatestReading() }
             guard let batch = try outbox().nextBatch() else { return }
-            guard sendingBatchID == nil else {
-                recordHistory("Watch history waiting", batch: batch,
-                    details: "reason=live reply outstanding", onlyWhenChanged: true)
-                return
-            }
+            guard sendingBatchID == nil else { return }
             // Leave an existing background transfer to WatchConnectivity. Restored
             // reachability sends the latest reading, not a second copy of this batch.
-            if let transfer = session.outstandingUserInfoTransfers.first(where: {
+            if session.outstandingUserInfoTransfers.contains(where: {
                 (try? Libre2HistoryBatch.decode($0.userInfo).id) == batch.id
             }) {
-                recordHistory("Watch history waiting", batch: batch,
-                    details: "reason=background transfer outstanding transferring=\(transfer.isTransferring)",
-                    onlyWhenChanged: true)
                 return
             }
-            guard try outbox().canRetryBackgroundTransfer(at: now()) else {
-                recordHistory("Watch history waiting", batch: batch,
-                    details: "reason=background acknowledgement pending retryIntervalSeconds=\(Int(Libre2HistoryQueue.backgroundRetryInterval))",
-                    onlyWhenChanged: true)
-                return
-            }
+            guard try outbox().canRetryBackgroundTransfer(at: now()) else { return }
             let dictionary = try batch.dictionary
             if reachable {
                 if let lastAttempt, lastAttempt.id == batch.id, now().timeIntervalSince(lastAttempt.date) < 60 {
-                    recordHistory("Watch history waiting", batch: batch,
-                        details: "reason=live retry interval", onlyWhenChanged: true)
                     return
                 }
                 lastAttempt = (batch.id, now())
                 sendingBatchID = batch.id
-                recordHistory("Watch history live send", batch: batch)
                 session.sendMessage(dictionary, replyHandler: { reply in
                     DispatchQueue.main.async {
                         if self.sendingBatchID == batch.id { self.sendingBatchID = nil }
@@ -107,13 +85,13 @@ final class Libre2WatchHistorySync {
                         // Interactive delivery is best effort. The durable outbox remains until
                         // an import acknowledgement arrives through either transport.
                         if self.queue?.state.batch?.id == batch.id, session.activationState == .activated {
-                            self.queueTransfer(dictionary, batchID: batch.id, reason: "live send failed")
+                            self.queueTransfer(dictionary, batchID: batch.id)
                         }
                         self.report(error)
                     }
                 })
             } else {
-                queueTransfer(dictionary, batchID: batch.id, reason: "phone unreachable")
+                queueTransfer(dictionary, batchID: batch.id)
             }
         } catch { report(error) }
     }
@@ -129,12 +107,7 @@ final class Libre2WatchHistorySync {
             published.date >= reading.date { return }
         do {
             try session.updateApplicationContext(Libre2HistoryBatch(readings: [reading]).latestDictionary)
-            Libre2ActivityLog.shared.recordDelivery("Watch latest context published", reading: reading,
-                details: deliveryState)
         } catch {
-            let failure = error as NSError
-            Libre2ActivityLog.shared.recordDelivery("Watch latest context failed", reading: reading,
-                details: "\(failure.domain) \(failure.code): \(failure.localizedDescription)")
             report(error)
             // A failed context update must not prevent live delivery or history submission.
             // The next existing delivery event can retry; the journal remains untouched.
@@ -149,14 +122,8 @@ final class Libre2WatchHistorySync {
             now().timeIntervalSince(lastLatestAttempt.date) < 60 { return }
         let dictionary = try Libre2HistoryBatch(readings: [reading]).latestDictionary
         lastLatestAttempt = (reading.id, now())
-        Libre2ActivityLog.shared.recordDelivery("Watch latest send", reading: reading, details: deliveryState)
         WCSession.default.sendMessage(dictionary, replyHandler: { reply in
             DispatchQueue.main.async {
-                let outcome = reply["error"] as? String
-                    ?? (reply["superseded"] as? Bool == true ? "superseded"
-                        : (try? Libre2HistoryAcknowledgement.decode(reply).readingIDs) == [reading.id]
-                            ? "save acknowledgement received" : "unrecognised reply")
-                Libre2ActivityLog.shared.recordDelivery("Watch latest reply", reading: reading, details: outcome)
                 if let error = reply["error"] as? String {
                     Libre2ActivityLog.shared.record("Latest reading sync: \(error)")
                 }
@@ -165,21 +132,12 @@ final class Libre2WatchHistorySync {
             }
         }, errorHandler: { error in
             DispatchQueue.main.async {
-                let failure = error as NSError
-                Libre2ActivityLog.shared.recordDelivery("Watch latest send failed", reading: reading,
-                    details: "\(failure.domain) \(failure.code): \(failure.localizedDescription)")
                 self.report(error)
             }
         })
     }
 
-    private var deliveryState: String {
-        let session = WCSession.default
-        return "foreground=\(WKApplication.shared().applicationState == .active)"
-            + " activated=\(session.activationState == .activated) reachable=\(session.isReachable)"
-    }
-
-    private func queueTransfer(_ dictionary: [String: Any], batchID: UUID, reason: String) {
+    private func queueTransfer(_ dictionary: [String: Any], batchID: UUID) {
         let session = WCSession.default
         guard !session.outstandingUserInfoTransfers.contains(where: {
             (try? Libre2HistoryBatch.decode($0.userInfo).id) == batchID
@@ -191,49 +149,6 @@ final class Libre2WatchHistorySync {
             return
         }
         session.transferUserInfo(dictionary)
-        if let batch = try? Libre2HistoryBatch.decode(dictionary) {
-            recordHistory("Watch background submitted", batch: batch, details: "reason=\(reason)")
-        }
-    }
-
-    /// Transport completion is not a database acknowledgement. Observe it without draining
-    /// the journal, retrying, or otherwise changing the existing delivery decisions.
-    func transferFinished(_ dictionary: [String: Any], error: Error?) {
-        guard let batch = try? Libre2HistoryBatch.decode(dictionary) else { return }
-        let outcome: String
-        if let error {
-            let failure = error as NSError
-            outcome = "error=\(failure.domain) \(failure.code): \(failure.localizedDescription)"
-            report(error)
-        } else {
-            outcome = "transport completed"
-        }
-        let awaitingAcknowledgement = queue.map { String($0.state.batch?.id == batch.id) } ?? "unknown"
-        recordHistory("Watch background finished", batch: batch,
-            details: "\(outcome) awaitingAcknowledgement=\(awaitingAcknowledgement)")
-    }
-
-    private func recordHistory(_ event: String, batch: Libre2HistoryBatch,
-                               details: String = "", onlyWhenChanged: Bool = false) {
-        guard Libre2ActivityLog.shared.isTracingEnabled,
-            let reading = batch.readings.max(by: { $0.date < $1.date }) else { return }
-        let pending = queue?.state.pending ?? []
-        let batchIDs = Set(batch.readings.map(\.id))
-        let waiting = pending.filter { !batchIDs.contains($0.id) }.count
-        let newest = pending.max(by: { $0.date < $1.date })
-        let outstanding = WCSession.default.outstandingUserInfoTransfers.filter {
-            (try? Libre2HistoryBatch.decode($0.userInfo).id) == batch.id
-        }.count
-        let state = "batch=\(batch.id.uuidString.prefix(8)) count=\(batch.readings.count) journalLoaded=\(queue != nil)"
-            + " pending=\(pending.count) waitingBehind=\(waiting)"
-            + " newestPendingMinute=\(newest.map { String($0.sensorMinute) } ?? "none")"
-            + " outstanding=\(outstanding) \(deliveryState)"
-            + (details.isEmpty ? "" : " \(details)")
-        // Collection and reachability already drive flush(). Do not add polling or write
-        // the same waiting state on every repeated frame/display event.
-        if onlyWhenChanged, lastWaitingState == state { return }
-        lastWaitingState = onlyWhenChanged ? state : nil
-        Libre2ActivityLog.shared.recordDelivery(event, reading: reading, details: state)
     }
 
     @discardableResult
@@ -253,16 +168,11 @@ final class Libre2WatchHistorySync {
                 resolvedBatchID = acknowledgement.batchID
                 Libre2ActivityLog.shared.record("History saved on iPhone (\(acknowledgement.readingIDs.count) readings). batch=\(resolvedBatchID.uuidString.prefix(8))")
             }
-            lastWaitingState = nil
             // Either route can finish first. Only release this batch, after saving its result;
             // late interactive callbacks must not clear a newer in-flight batch.
             if sendingBatchID == resolvedBatchID { sendingBatchID = nil }
             for transfer in WCSession.default.outstandingUserInfoTransfers where
                 (try? Libre2HistoryBatch.decode(transfer.userInfo).id) == resolvedBatchID {
-                if let batch = try? Libre2HistoryBatch.decode(transfer.userInfo) {
-                    recordHistory("Watch background cancel requested", batch: batch,
-                        details: "reason=batch resolution persisted")
-                }
                 transfer.cancel()
             }
         } catch Libre2HistoryError.staleAcknowledgement {

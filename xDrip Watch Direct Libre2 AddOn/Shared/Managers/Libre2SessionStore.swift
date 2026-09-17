@@ -39,18 +39,9 @@ final class Libre2SessionStore {
         self.persist = persist
     }
 
-    convenience init() {
-        let applicationSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let fileURL = applicationSupport.appendingPathComponent(
-            "PhoneControlledLibre", isDirectory: true
-        ).appendingPathComponent(
-            "ownership.json")
+    convenience init(fileURL: URL = Libre2JournalFile.url("ownership.json")) {
         let record = Self.loadRecord(from: fileURL)
-
-        self.init(record: record) { record in
-            try Self.saveRecord(record, to: fileURL)
-        }
+        self.init(record: record) { try Libre2JournalFile.save($0, to: fileURL) }
     }
 
     // MARK: - Phone to Watch
@@ -70,7 +61,7 @@ final class Libre2SessionStore {
             }
 
             record.session = session
-            record.reclaim = nil
+            record.nfcCredentials = nil
             record.watchMayHaveConnected = false
             record.watchPeripheralID = nil
             record.owner = .preparingWatch
@@ -106,10 +97,7 @@ final class Libre2SessionStore {
             guard record.session?.id == id, !record.retiredIDs.contains(id) else {
                 throw Libre2HandoffError.staleSession
             }
-            guard
-                [.preparingWatch, .releasingPhone, .watch, .returnRequested, .returningToPhone].contains(
-                    record.owner)
-            else {
+            guard record.owner.canRequestReturn else {
                 throw Libre2HandoffError.invalidTransition
             }
             // If M has already been accepted, Watch may be about to send COMMIT.
@@ -157,10 +145,7 @@ final class Libre2SessionStore {
             else {
                 throw Libre2HandoffError.staleSession
             }
-            guard
-                [.preparingWatch, .watch, .releasingPhone, .returnRequested, .returningToPhone].contains(
-                    record.owner)
-            else {
+            guard record.owner.canRequestReturn else {
                 throw Libre2HandoffError.invalidTransition
             }
 
@@ -186,17 +171,17 @@ final class Libre2SessionStore {
     func recordPhoneCounter(_ counter: UInt16, sensorUID: Data, unlockCode: UInt32) throws {
         lock.lock()
         defer { lock.unlock() }
-        let tracksReclaim =
-            record.reclaim?.nfcConfirmed == true && record.reclaim?.sensorUID == sensorUID
-            && record.reclaim?.unlockCode == unlockCode
+        let tracksNFCCredentials =
+            record.nfcCredentials?.sensorUID == sensorUID
+            && record.nfcCredentials?.unlockCode == unlockCode
         let tracksSession =
             record.session?.sensorUID == sensorUID && record.session?.unlockCode == unlockCode
-        guard tracksReclaim || tracksSession else { return }
+        guard tracksNFCCredentials || tracksSession else { return }
         try updateRecord { record in
             guard record.owner.allowsPhoneConnection else { throw Libre2HandoffError.invalidTransition }
-            if tracksReclaim {
-                guard counter >= record.reclaim!.unlockCount else { throw Libre2HandoffError.staleSession }
-                record.reclaim?.unlockCount = counter
+            if tracksNFCCredentials {
+                guard counter >= record.nfcCredentials!.unlockCount else { throw Libre2HandoffError.staleSession }
+                record.nfcCredentials?.unlockCount = counter
             }
             if tracksSession {
                 guard counter >= record.session!.unlockCount else { throw Libre2HandoffError.staleSession }
@@ -216,7 +201,7 @@ final class Libre2SessionStore {
         if record.hasExperimentalState {
             guard let code = resetUnlockCode, code != 42,
                   code <= UInt32.max - UInt32(UInt16.max),
-                  code != record.session?.unlockCode, code != record.reclaim?.unlockCode,
+                  code != record.session?.unlockCode, code != record.nfcCredentials?.unlockCode,
                   code != record.phoneNFCResetCode else { throw Libre2HandoffError.invalidSession }
             try updateRecord { record in
                 if let id = record.session?.id { record.retiredIDs.insert(id) }
@@ -224,7 +209,7 @@ final class Libre2SessionStore {
                 // the old credentials. Cancellation/restart leaves ordinary NFC available.
                 record.owner = .failed
                 record.session = nil
-                record.reclaim = nil
+                record.nfcCredentials = nil
                 record.phoneNFCResetCode = code
             }
         }
@@ -256,8 +241,8 @@ final class Libre2SessionStore {
             record.phoneNFCResetCode = nil
             // Keep the newly provisioned credentials so restart and later ordinary scans
             // cannot fall back to a streaming code held by a retired Watch session.
-            record.reclaim = Libre2ReclaimState(
-                id: UUID(), sensorUID: sensorUID, unlockCode: unlockCode, nfcConfirmed: true)
+            record.nfcCredentials = Libre2NFCCredentials(
+                sensorUID: sensorUID, unlockCode: unlockCode)
             record.owner = .phone
         }
         endPhoneNFC()
@@ -270,14 +255,6 @@ final class Libre2SessionStore {
         nfcActive = false
         confirmedNFCResetCode = nil
         NotificationCenter.default.post(name: Self.didChange, object: self)
-    }
-
-    /// Retire even an unseen handoff: queued revocation can overtake PREPARE. Return true
-    /// only when its collector must stop; a late revoke must not stop a newer session.
-    @discardableResult
-    func revokeOnWatch(_ session: Libre2WatchSession) throws -> Bool {
-        try session.validate()
-        return try retireOnWatch([session.id]) != nil
     }
 
     /// Reconcile the phone's durable retirements even after NFC removed its old credentials.
@@ -403,34 +380,10 @@ final class Libre2SessionStore {
 
         do {
             record = try JSONDecoder().decode(Libre2OwnershipRecord.self, from: Data(contentsOf: fileURL))
-            try record.session?.validate()
-            try record.reclaim?.validate()
-            if let code = record.phoneNFCResetCode {
-                guard record.owner == .failed, code != 42, code <= UInt32.max - UInt32(UInt16.max) else {
-                    throw Libre2HandoffError.invalidSession
-                }
-            }
-            if [.reclaimingPhone, .verifyingPhone].contains(record.owner) {
-                guard record.reclaim != nil else { throw Libre2HandoffError.invalidSession }
-                if record.owner == .verifyingPhone, record.reclaim?.nfcConfirmed != true {
-                    throw Libre2HandoffError.invalidSession
-                }
-            } else if record.owner != .phone && record.owner != .failed && record.session == nil {
-                throw Libre2HandoffError.invalidSession
-            }
+            try record.validateRestoredState()
         } catch {
             record.owner = .failed
         }
         return record
-    }
-
-    private static func saveRecord(_ record: Libre2OwnershipRecord, to fileURL: URL) throws {
-        try FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try JSONEncoder().encode(record).write(to: fileURL, options: .atomic)
-
-        let file = try FileHandle(forWritingTo: fileURL)
-        defer { try? file.close() }
-        try file.synchronize()
     }
 }

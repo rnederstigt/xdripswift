@@ -25,12 +25,11 @@ final class Libre2PhoneHandoff: ObservableObject {
         didSet { Libre2ActivityLog.shared.record(status) }
     }
     @Published private(set) var isStarting = false
-    private var lastReachability: Bool?
-    private var lastWatchState: [Bool] = []
+    private var lastWatchAvailability: WatchAvailability?
     private var lastSettings: ChecklistSettings?
     var owner: Libre2Owner { store.snapshot.owner }
     var canCancel: Bool {
-        [.preparingWatch, .releasingPhone, .watch, .returnRequested, .returningToPhone].contains(owner) && store.snapshot.session != nil
+        store.snapshot.phoneSwitchAction == .returnToPhone
     }
 
     private let store = Libre2SessionStore.shared
@@ -44,17 +43,27 @@ final class Libre2PhoneHandoff: ObservableObject {
             && checklistGroups.flatMap(\.items).allSatisfy { $0.isSatisfied }
     }
 
+    private struct WatchAvailability: Equatable {
+        let isActivated: Bool
+        let isPaired: Bool
+        let isInstalled: Bool
+        let isReachable: Bool
+    }
+
     func recordReachability() {
         let session = WCSession.default
-        let watchState = [session.activationState == .activated, session.isPaired, session.isWatchAppInstalled, reachable]
-        if watchState != lastWatchState {
-            lastWatchState = watchState
-            refreshChecklist()
-        }
-        guard lastReachability != reachable else { return }
-        lastReachability = reachable
-        Libre2ActivityLog.shared.record(reachable ? Texts_DirectLibre.watchReachableLog : Texts_DirectLibre.watchUnreachableLog)
-        if reachable { syncRetiredSessions() }
+        let availability = WatchAvailability(
+            isActivated: session.activationState == .activated,
+            isPaired: session.isPaired,
+            isInstalled: session.isWatchAppInstalled,
+            isReachable: reachable)
+        let previous = lastWatchAvailability
+        guard availability != previous else { return }
+        lastWatchAvailability = availability
+        refreshChecklist()
+        guard previous?.isReachable != availability.isReachable else { return }
+        Libre2ActivityLog.shared.record(availability.isReachable ? Texts_DirectLibre.watchReachableLog : Texts_DirectLibre.watchUnreachableLog)
+        if availability.isReachable { syncRetiredSessions() }
     }
 
     /// Called on main for connection, ownership or freshness changes; never sends a radio request.
@@ -142,7 +151,7 @@ final class Libre2PhoneHandoff: ObservableObject {
             return
         }
         registerHistorySession(session) { result in
-            guard self.owner == .preparingWatch, self.store.snapshot.session?.id == session.id else { return }
+            guard self.store.snapshot.matches(id: session.id, owner: .preparingWatch) else { return }
             switch result {
             case .success: self.sendWatchPreparation(session)
             case .failure(let error): self.status = error.localizedDescription
@@ -153,7 +162,7 @@ final class Libre2PhoneHandoff: ObservableObject {
     private func sendWatchPreparation(_ session: Libre2WatchSession) {
         Libre2ActivityLog.shared.record(Texts_DirectLibre.prepareSent)
         send(.prepare, session: session) {
-            guard self.owner == .preparingWatch, self.store.snapshot.session?.id == session.id else { return }
+            guard self.store.snapshot.matches(id: session.id, owner: .preparingWatch) else { return }
             do {
                 try self.store.beginPhoneRelease(id: session.id)
                 self.disconnectPhoneAndActivateWatch(session)
@@ -172,8 +181,7 @@ final class Libre2PhoneHandoff: ObservableObject {
         status = Texts_DirectLibre.disconnectingPhone
         sensor.disconnect {
             // An intervening return message can supersede an outstanding disconnect callback.
-            guard self.store.snapshot.owner == .releasingPhone,
-                self.store.snapshot.session?.id == session.id
+            guard self.store.snapshot.matches(id: session.id, owner: .releasingPhone)
             else {
                 return
             }
@@ -184,7 +192,7 @@ final class Libre2PhoneHandoff: ObservableObject {
     private func activateWatch(_ session: Libre2WatchSession) {
         Libre2ActivityLog.shared.record(Texts_DirectLibre.activateSent)
         send(.activate, session: session) {
-            guard self.owner == .releasingPhone, self.store.snapshot.session?.id == session.id else { return }
+            guard self.store.snapshot.matches(id: session.id, owner: .releasingPhone) else { return }
             do {
                 try self.store.confirmWatchOwnership(id: session.id)
                 self.status = Texts_DirectLibre.watchOwnsLibre
@@ -252,15 +260,10 @@ final class Libre2PhoneHandoff: ObservableObject {
         [Libre2HandoffMessage.retiredIDsKey: store.snapshot.retiredIDs.map(\.uuidString).sorted()]
     }
 
-    func notifyWatchOfNFCReset(previousSession: Libre2WatchSession?) {
+    func notifyWatchOfNFCReset() {
         let session = WCSession.default
         if session.activationState == .activated {
-            // Retain the legacy revoke payload for a companion awaiting an update.
-            var dictionary = previousSession.flatMap {
-                try? Libre2HandoffMessage(kind: .revoke, session: $0).dictionary
-            } ?? [:]
-            dictionary.merge(retiredSessionsDictionary) { _, retirement in retirement }
-            session.transferUserInfo(dictionary)
+            session.transferUserInfo(retiredSessionsDictionary)
         }
         syncRetiredSessions()
     }
@@ -292,7 +295,7 @@ final class Libre2PhoneHandoff: ObservableObject {
                 replyHandler: { reply in
                     DispatchQueue.main.async {
                         // Ignore replies from a phase superseded by cancellation or a completed return.
-                        guard self.owner == expectedOwner, self.store.snapshot.session?.id == session.id else { return }
+                        guard self.store.snapshot.matches(id: session.id, owner: expectedOwner) else { return }
                         guard reply["ready"] as? String == session.id.uuidString else {
                             self.status = reply["error"] as? String ?? Texts_DirectLibre.handoffRejected
                             return
@@ -303,7 +306,7 @@ final class Libre2PhoneHandoff: ObservableObject {
                 errorHandler: { error in
                     DispatchQueue.main.async {
                         // Ignore replies from a phase superseded by cancellation or a completed return.
-                        guard self.owner == expectedOwner, self.store.snapshot.session?.id == session.id else { return }
+                        guard self.store.snapshot.matches(id: session.id, owner: expectedOwner) else { return }
                         self.status = Texts_DirectLibre.handoffFailed(error.localizedDescription)
                     }
                 })

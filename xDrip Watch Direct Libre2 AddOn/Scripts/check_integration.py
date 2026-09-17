@@ -44,7 +44,7 @@ for area, target in (("iPhone", "xdrip"), ("Watch", "xDrip Watch App")):
 shared = set((addon / "Shared").rglob("*.swift"))
 complication_sources = source_sets["xDrip Watch Complication Extension"]
 assert set((addon / "Complication").glob("*.swift")) <= complication_sources
-assert complication_sources & shared == {addon / "Shared/Managers/Libre2ComplicationDiagnostics.swift"}
+assert not complication_sources & shared, "The original complication needs no add-on sources"
 phone_only = {"Libre2Checklist.swift", "Libre2PhoneSwitchAction.swift", "Libre2PhoneReadingStatus.swift", "Libre2PhoneHistoryUpdate.swift", "Libre2HistoryRegistry.swift"}
 watch_shared = {path for path in shared if path.name not in phone_only}
 assert watch_shared <= source_sets["xDrip Watch App"], "Watch is missing shared helpers"

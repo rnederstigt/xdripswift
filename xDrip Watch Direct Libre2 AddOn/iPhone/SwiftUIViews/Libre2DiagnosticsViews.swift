@@ -60,18 +60,17 @@ struct Libre2ChecklistView: View {
 
 struct Libre2ActivityLogView: View {
     @State private var entries = Libre2ActivityLog.shared.entries
-    @State private var watchEntries: [Libre2ActivityLog.Entry] = []
+    @State private var watchEntries: [Libre2DiagnosticEntry] = []
     @State private var capturedAt: Date?
     @State private var isLoading = false
     @State private var loadError = ""
-    @State private var isTracingEnabled = Libre2ActivityLog.shared.isTracingEnabled
     @ObservedObject private var handoff = Libre2PhoneHandoff.shared
     private static let pageSize = 5
     @State private var visibleCount = Libre2ActivityLogView.pageSize
 
     private struct Row: Identifiable {
         let source: String
-        let entry: Libre2ActivityLog.Entry
+        let entry: Libre2DiagnosticEntry
         var id: String { source + entry.id.uuidString }
     }
 
@@ -84,12 +83,6 @@ struct Libre2ActivityLogView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(Texts_DirectLibre.activityLog).font(.headline)
-            Toggle(Texts_DirectLibre.detailedDiagnostics, isOn: Binding(
-                get: { isTracingEnabled }, set: { loadWatchActivity(tracing: $0) }))
-                .disabled(isLoading || !handoff.reachable)
-                .font(.caption)
-            Text(Texts_DirectLibre.detailedDiagnosticsHelp)
-                .font(.caption2).foregroundColor(.secondary)
             HStack {
                 Button(Texts_DirectLibre.loadWatchActivity) { loadWatchActivity() }
                     .disabled(isLoading || !handoff.reachable)
@@ -138,24 +131,16 @@ struct Libre2ActivityLogView: View {
         }
     }
 
-    private func loadWatchActivity(tracing: Bool? = nil) {
+    private func loadWatchActivity() {
         guard !isLoading, handoff.reachable else { return }
         isLoading = true
         loadError = ""
-        var request: [String: Any] = [Libre2ActivityLog.requestKey: true]
-        if let tracing { request[Libre2ActivityLog.tracingKey] = tracing }
+        let request: [String: Any] = [Libre2ActivityLog.requestKey: true]
         WCSession.default.sendMessage(request, replyHandler: { reply in
             DispatchQueue.main.async {
                 isLoading = false
                 do {
                     let snapshot = try Libre2ActivityLog.decodeSnapshot(reply)
-                    if let enabled = reply[Libre2ActivityLog.tracingKey] as? Bool {
-                        isTracingEnabled = enabled
-                        Libre2ActivityLog.shared.isTracingEnabled = enabled
-                    } else if tracing != nil {
-                        // An older companion must not appear to confirm a setting it ignores.
-                        loadError = Texts_DirectLibre.watchActivityUnavailable
-                    }
                     watchEntries = snapshot
                     capturedAt = Date()
                 } catch {
@@ -171,13 +156,13 @@ struct Libre2ActivityLogView: View {
     }
 }
 
-/// Main-page summary of ordinary phone journal events; detailed traces stay in diagnostics.
+/// Main-page summary of the phone activity journal.
 struct Libre2RecentActivityView: View {
     @State private var entries = Libre2ActivityLog.shared.entries
     @State private var isVisible = false
     @State private var visibleCount = 3
 
-    private var recent: [Libre2ActivityLog.Entry] {
+    private var recent: [Libre2DiagnosticEntry] {
         entries.reversed().filter {
             !$0.message.hasPrefix("Delivery:") && !$0.message.hasPrefix("Lifecycle:")
                 && !$0.message.hasPrefix("Complication:")

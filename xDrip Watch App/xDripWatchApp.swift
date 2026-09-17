@@ -15,11 +15,6 @@ import WatchKit
 @main
 struct xDrip_Watch_AppApp: App {
     @StateObject var watchState = WatchStateModel()
-
-    init() {
-        Libre2LifecycleDiagnostics.start()
-        Libre2LifecycleDiagnostics.recordSession("Watch app initialized")
-    }
     
     var body: some Scene {
         WindowGroup {

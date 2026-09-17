@@ -13,6 +13,22 @@ final class Libre2HandoffTests: XCTestCase {
                 extraOffset: 0))
     }
 
+    func testCompletedNFCCredentialsRoundTripAndCounterMonotonicity() throws {
+        let uid = session().sensorUID
+        let credentials = Libre2NFCCredentials(sensorUID: uid, unlockCode: 5000, unlockCount: 19)
+        let record = Libre2OwnershipRecord(nfcCredentials: credentials)
+        let data = try JSONEncoder().encode(record)
+        let restored = try JSONDecoder().decode(Libre2OwnershipRecord.self, from: data)
+        XCTAssertEqual(restored, record)
+        try restored.validateRestoredState()
+        let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(credentials)) as? [String: Any])
+        XCTAssertEqual(Set(fields.keys), ["sensorUID", "unlockCode", "unlockCount"])
+        let store = Libre2SessionStore(record: restored) { _ in }
+        try store.recordPhoneCounter(20, sensorUID: uid, unlockCode: 5000)
+        XCTAssertEqual(store.snapshot.nfcCredentials?.unlockCount, 20)
+        XCTAssertThrowsError(try store.recordPhoneCounter(19, sensorUID: uid, unlockCode: 5000))
+    }
+
     func testSessionRoundTrip() throws {
         let value = session()
         XCTAssertEqual(
@@ -23,7 +39,7 @@ final class Libre2HandoffTests: XCTestCase {
     func testPhoneGuardsEveryNonPhoneState() {
         for owner in [
             Libre2Owner.preparingWatch, .releasingPhone, .watch, .returningToPhone, .releasingWatch,
-            .returnRequested, .reclaimingPhone, .verifyingPhone, .failed,
+            .returnRequested, .failed,
         ] {
             XCTAssertFalse(owner.allowsPhoneConnection)
         }
@@ -140,7 +156,7 @@ final class Libre2HandoffTests: XCTestCase {
         )
         var parser = Libre2ParserState()
         XCTAssertTrue(
-            Libre2Core.parseBLEData(Data(), libre1DerivedAlgorithmParameters: nil, state: &parser)
+            Libre2Core.parseBLEData(Data(), calibration: session().calibration, state: &parser)
                 .bleGlucose.isEmpty)
     }
 
@@ -153,7 +169,7 @@ final class Libre2HandoffTests: XCTestCase {
         var parser = Libre2ParserState()
         let now = Date(timeIntervalSince1970: 1000)
         let parsed = Libre2Core.parseBLEData(
-            data, libre1DerivedAlgorithmParameters: session().calibration, state: &parser, now: now)
+            data, calibration: session().calibration, state: &parser, now: now)
         XCTAssertEqual(parsed.bleGlucose.first?.glucoseLevelRaw, 100)
         XCTAssertEqual(parsed.bleGlucose.first?.timeStamp, now)
         XCTAssertEqual(parsed.sensorTimeInMinutes, 60)
@@ -184,15 +200,18 @@ final class Libre2HandoffTests: XCTestCase {
             data("3c00000073e808168a009e02"))
     }
 
-    func testWatchParserNeverReturnsRawFallback() {
+    func testNativeParserRejectsInvalidLatestWithoutChangingHistory() {
         var data = Data(repeating: 0, count: 44)
         data[0] = 10
+        let invalid = Libre2Calibration(slopeSlope: 0, offsetSlope: 0, slopeOffset: 0,
+            offsetOffset: 0, extraSlope: 1, extraOffset: 0)
         var parser = Libre2ParserState()
-        XCTAssertTrue(
-            Libre2Core.parseBLEData(
-                data, libre1DerivedAlgorithmParameters: nil, state: &parser, allowsRawFallback: false
-            ).bleGlucose
-                .isEmpty)
+        parser.previousRawGlucoseValues = [123]
+        XCTAssertTrue(Libre2Core.parseBLEData(data, calibration: invalid, state: &parser).bleGlucose.isEmpty)
+        XCTAssertEqual(parser.previousRawGlucoseValues, [123])
+        data[0] = 0
+        XCTAssertTrue(Libre2Core.parseBLEData(data, calibration: session().calibration, state: &parser).bleGlucose.isEmpty)
+        XCTAssertEqual(parser.previousRawGlucoseValues, [123])
     }
 
     func testReturnFreezesFurtherCounterReservations() throws {
@@ -455,12 +474,12 @@ final class Libre2HandoffTests: XCTestCase {
         let store = Libre2SessionStore(record: Libre2OwnershipRecord(owner: .watch, session: first)) {
             _ in
         }
-        try store.revokeOnWatch(first)
+        try store.retireOnWatch([first.id])
         XCTAssertFalse(store.snapshot.owner.allowsWatchConnection)
         try store.finishReturnOnWatch(id: first.id)
         let next = session()
         try store.prepare(next)
-        XCTAssertFalse(try store.revokeOnWatch(first))
+        XCTAssertNil(try store.retireOnWatch([first.id]))
         XCTAssertEqual(store.snapshot.session?.id, next.id)
         XCTAssertThrowsError(try store.activateWatch(id: first.id))
     }
@@ -504,7 +523,7 @@ final class Libre2HandoffTests: XCTestCase {
         XCTAssertNil(store.snapshot.session)
         try store.confirmPhoneNFCReset(unlockCode: 5000)
         try store.finishPhoneNFCReset(unlockCode: 5000, sensorUID: value.sensorUID)
-        XCTAssertEqual(store.snapshot.reclaim?.sensorUID, value.sensorUID)
+        XCTAssertEqual(store.snapshot.nfcCredentials?.sensorUID, value.sensorUID)
     }
 
     func testOrdinaryNFCDoesNotDependOnExperimentalJournalWrites() throws {
@@ -546,7 +565,7 @@ final class Libre2HandoffTests: XCTestCase {
         XCTAssertEqual(store.snapshot.owner, .phone)
         XCTAssertTrue(store.snapshot.hasExperimentalState)
         XCTAssertTrue(Libre2OwnershipRecord(phoneNFCResetCode: 1000).hasExperimentalState)
-        XCTAssertTrue(Libre2OwnershipRecord(reclaim: Libre2ReclaimState(id: UUID(), sensorUID: value.sensorUID, unlockCode: 1000)).hasExperimentalState)
+        XCTAssertTrue(Libre2OwnershipRecord(nfcCredentials: Libre2NFCCredentials(sensorUID: value.sensorUID, unlockCode: 1000)).hasExperimentalState)
     }
 
     // MARK: - Ordinary NFC hard reset
@@ -613,7 +632,7 @@ final class Libre2HandoffTests: XCTestCase {
         let old = session()
         var persisted = Libre2OwnershipRecord()
         let watch = Libre2SessionStore { persisted = $0 }
-        XCTAssertFalse(try watch.revokeOnWatch(old))
+        XCTAssertNil(try watch.retireOnWatch([old.id]))
         XCTAssertEqual(watch.snapshot.owner, .phone)
         let restarted = Libre2SessionStore(record: persisted) { _ in }
         XCTAssertThrowsError(try restarted.prepare(old))
@@ -621,7 +640,7 @@ final class Libre2HandoffTests: XCTestCase {
         let next = session()
         try restarted.prepare(next)
         try restarted.activateWatch(id: next.id)
-        XCTAssertFalse(try restarted.revokeOnWatch(old))
+        XCTAssertNil(try restarted.retireOnWatch([old.id]))
         XCTAssertEqual(restarted.snapshot.owner, .watch)
         XCTAssertEqual(restarted.snapshot.session?.id, next.id)
     }
@@ -630,7 +649,7 @@ final class Libre2HandoffTests: XCTestCase {
         let old = session()
         for owner in [Libre2Owner.phone, .preparingWatch, .releasingPhone, .watch,
                       .returningToPhone, .releasingWatch, .returnRequested,
-                      .reclaimingPhone, .verifyingPhone, .failed] {
+                      .failed] {
             var persisted: Libre2OwnershipRecord?
             let store = Libre2SessionStore(record: Libre2OwnershipRecord(owner: owner, session: old)) {
                 persisted = $0
@@ -641,7 +660,7 @@ final class Libre2HandoffTests: XCTestCase {
             XCTAssertEqual(persisted?.phoneNFCResetCode, 1000)
             XCTAssertTrue(store.snapshot.retiredIDs.contains(old.id))
             XCTAssertNil(store.snapshot.session)
-            XCTAssertNil(store.snapshot.reclaim)
+            XCTAssertNil(store.snapshot.nfcCredentials)
             XCTAssertFalse(store.snapshot.owner.allowsPhoneConnection)
             XCTAssertThrowsError(try store.beginPhoneRelease(id: old.id))
             XCTAssertThrowsError(try store.acceptReturn(old))
@@ -662,10 +681,10 @@ final class Libre2HandoffTests: XCTestCase {
         try store.finishPhoneNFCReset(unlockCode: 1000, sensorUID: newUID)
         XCTAssertTrue(store.snapshot.owner.allowsPhoneConnection)
         XCTAssertFalse(store.phoneNFCIsActive)
-        XCTAssertEqual(store.snapshot.reclaim?.sensorUID, newUID)
-        XCTAssertEqual(store.snapshot.reclaim?.unlockCount, 0)
+        XCTAssertEqual(store.snapshot.nfcCredentials?.sensorUID, newUID)
+        XCTAssertEqual(store.snapshot.nfcCredentials?.unlockCount, 0)
         try store.recordPhoneCounter(1, sensorUID: newUID, unlockCode: 1000)
-        XCTAssertEqual(store.snapshot.reclaim?.unlockCount, 1)
+        XCTAssertEqual(store.snapshot.nfcCredentials?.unlockCount, 1)
         XCTAssertThrowsError(try store.prepare(old))
         // Even after recovery, a subsequent scan must not re-use the old credentials.
         try store.beginPhoneNFC(resetUnlockCode: 2000)
@@ -717,27 +736,33 @@ final class Libre2HandoffTests: XCTestCase {
         XCTAssertFalse(store.snapshot.owner.allowsPhoneConnection)
     }
 
-    func testLegacyReclaimRecordsRequireOrdinaryNFCRecovery() throws {
-        let old = session()
-        for phase in [Libre2Owner.reclaimingPhone, .verifyingPhone] {
-            let credentials = Libre2ReclaimState(id: UUID(), sensorUID: old.sensorUID,
-                                               unlockCode: 5000, nfcConfirmed: true, unlockCount: 19)
-            let saved = Libre2OwnershipRecord(owner: phase, session: old, reclaim: credentials)
-            let decoded = try JSONDecoder().decode(Libre2OwnershipRecord.self, from: JSONEncoder().encode(saved))
-            let store = Libre2SessionStore(record: decoded) { _ in }
-            XCTAssertFalse(store.snapshot.owner.allowsPhoneConnection)
-            XCTAssertEqual(store.snapshot.phoneSwitchAction, .unavailable)
-            XCTAssertEqual(store.snapshot.reclaim?.unlockCount, 19)
-            for code: UInt32 in [42, 5000, .max] {
-                XCTAssertThrowsError(try store.beginPhoneNFC(resetUnlockCode: code))
-            }
-            try store.beginPhoneNFC(resetUnlockCode: 6000)
-            XCTAssertNil(store.snapshot.reclaim)
-            try store.confirmPhoneNFCReset(unlockCode: 6000)
-            try store.finishPhoneNFCReset(unlockCode: 6000, sensorUID: old.sensorUID)
-            XCTAssertTrue(store.snapshot.owner.allowsPhoneConnection)
-            XCTAssertEqual(store.snapshot.reclaim?.unlockCode, 6000)
+    func testRemovedOwnershipPhasesAreNotDecoded() throws {
+        for phase in ["reclaimingPhone", "verifyingPhone"] {
+            let data = try JSONEncoder().encode(phase)
+            XCTAssertThrowsError(try JSONDecoder().decode(Libre2Owner.self, from: data))
         }
+    }
+
+    func testRestoredJournalValidationRejectsIncompleteTransactions() throws {
+        try Libre2OwnershipRecord().validateRestoredState()
+        try Libre2OwnershipRecord(owner: .failed).validateRestoredState()
+        for phase: Libre2Owner in [.preparingWatch, .releasingPhone, .watch, .returnRequested,
+                                  .returningToPhone, .releasingWatch] {
+            XCTAssertThrowsError(try Libre2OwnershipRecord(owner: phase).validateRestoredState())
+            let record = Libre2OwnershipRecord(owner: phase, session: session())
+            try record.validateRestoredState()
+            XCTAssertTrue(record.matches(id: record.session!.id, owner: phase))
+            XCTAssertFalse(record.matches(id: UUID(), owner: phase))
+            XCTAssertFalse(record.matches(id: record.session!.id, owner: .phone))
+        }
+        let credentials = Libre2NFCCredentials(sensorUID: session().sensorUID,
+                                            unlockCode: 5000, unlockCount: 19)
+        let reset = Libre2OwnershipRecord(owner: .phone, nfcCredentials: credentials)
+        let restored = try JSONDecoder().decode(Libre2OwnershipRecord.self, from: JSONEncoder().encode(reset))
+        try restored.validateRestoredState()
+        XCTAssertEqual(restored.nfcCredentials, credentials)
+        XCTAssertThrowsError(try Libre2OwnershipRecord(owner: .phone, phoneNFCResetCode: 5000).validateRestoredState())
+        try Libre2OwnershipRecord(owner: .failed, phoneNFCResetCode: 5000).validateRestoredState()
     }
 
     // MARK: - Phone reading checklist regressions

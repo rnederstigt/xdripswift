@@ -1,6 +1,6 @@
 import Foundation
 
-/// Main-queue Watch outbox. Keep unacknowledged readings across return, reclaim and restart.
+/// Main-queue Watch outbox. Keep unacknowledged readings across return, NFC reset and restart.
 /// Only the newest actual measurement from each BLE frame is collected; interpolated graph
 /// points are deliberately excluded. This is not a sensor-history/backfill implementation.
 final class Libre2HistoryQueue {
@@ -13,18 +13,6 @@ final class Libre2HistoryQueue {
         var lastBackgroundSubmission: Date?
         var lastCollectedMinute: [String: UInt16] = [:]
         var unresolved: [Libre2HistoryReading] = []
-
-        init() {}
-
-        init(from decoder: Decoder) throws {
-            let values = try decoder.container(keyedBy: CodingKeys.self)
-            pending = try values.decode([Libre2HistoryReading].self, forKey: .pending)
-            batch = try values.decodeIfPresent(Libre2HistoryBatch.self, forKey: .batch)
-            lastBackgroundSubmission = try values.decodeIfPresent(Date.self, forKey: .lastBackgroundSubmission)
-            lastCollectedMinute = try values.decode([String: UInt16].self, forKey: .lastCollectedMinute)
-            // Existing installations have no unresolved collection; keep their pending batch intact.
-            unresolved = try values.decodeIfPresent([Libre2HistoryReading].self, forKey: .unresolved) ?? []
-        }
     }
 
     private(set) var state: State
@@ -40,9 +28,9 @@ final class Libre2HistoryQueue {
         self.persist = persist
     }
 
-    convenience init(url: URL = Libre2HistoryFile.url("watch-history.json")) throws {
-        let state = try Libre2HistoryFile.load(State.self, from: url, fallback: State())
-        self.init(state: state) { try Libre2HistoryFile.save($0, to: url) }
+    convenience init(url: URL = Libre2JournalFile.url("watch-history.json")) throws {
+        let state = try Libre2JournalFile.load(State.self, from: url, fallback: State())
+        self.init(state: state) { try Libre2JournalFile.save($0, to: url) }
     }
 
     func append(_ reading: Libre2HistoryReading) throws {

@@ -101,7 +101,7 @@ struct LocationTests {
         try check("enabled setting persists but every non-Watch owner prevents a start") { helper, defaults in
             _ = try send(.setEnabled(true), to: helper)
             for owner: Libre2Owner in [.phone, .preparingWatch, .releasingPhone, .returnRequested,
-                                      .returningToPhone, .releasingWatch, .reclaimingPhone, .verifyingPhone, .failed] {
+                                      .returningToPhone, .releasingWatch, .failed] {
                 own(owner)
                 precondition(CLLocationManager.instances.isEmpty)
             }

@@ -7,8 +7,7 @@ from phone calibration/smoothing. No app preferences or repository files are wri
 """
 from pathlib import Path
 import re
-import subprocess
-import tempfile
+from swift_test_runner import run_swift, test_directory
 
 addon = Path(__file__).resolve().parents[1]
 repo = addon.parent
@@ -126,15 +125,13 @@ precondition(watch.deltaValueInUserUnit == 17, "Ordinary relay delta was changed
 print("\\(cases) phone/Watch trend comparisons passed; repeated unit changes and ordinary relay guard passed.")
 """
 
-with tempfile.TemporaryDirectory(prefix="direct-libre-alignment-") as directory:
-    work = Path(directory)
+with test_directory("direct-libre-alignment-") as work:
     source = work / "main.swift"
     source.write_text(code)
     executable = work / "alignment-tests"
-    subprocess.run([
-        "xcrun", "swiftc", "-module-cache-path", str(work / "module-cache"),
-        str(addon / "Shared/Constants/ConstantsLibre2.swift"),
-        str(addon / "Shared/Protocol/Libre2BLEData.swift"),
-        str(addon / "Shared/Managers/Libre2ReadingPipeline.swift"), str(source), "-o", str(executable)
-    ], check=True)
-    subprocess.run([str(executable)], check=True)
+    run_swift(executable, [
+        addon / "Shared/Constants/ConstantsLibre2.swift",
+        addon / "Shared/Protocol/Libre2BLEData.swift",
+        addon / "Shared/Managers/Libre2ReadingPipeline.swift",
+        source,
+    ])

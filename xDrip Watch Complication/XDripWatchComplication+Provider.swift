@@ -14,20 +14,15 @@ extension XDripWatchComplication {
     struct Provider: TimelineProvider {        
         
         func placeholder(in context: Context) -> Entry {
-            let entry = Entry.placeholder
-            recordLibreDiagnostics("placeholder", entry: entry, isPreview: context.isPreview)
-            return entry
+            .placeholder
         }
         
         func getSnapshot(in context: Context, completion: @escaping (Entry) -> ()) {
-            let entry = Entry.placeholder
-            recordLibreDiagnostics("snapshot", entry: entry, isPreview: context.isPreview)
-            completion(entry)
+            completion(.placeholder)
         }
         
         func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
             let entry = Entry(date: .now, widgetState: getWidgetStateFromSharedUserDefaults() ?? sampleWidgetStateFromProvider)
-            recordLibreDiagnostics("timeline", entry: entry, isPreview: context.isPreview)
                 
             completion(.init(entries: [entry], policy: .never))
         }

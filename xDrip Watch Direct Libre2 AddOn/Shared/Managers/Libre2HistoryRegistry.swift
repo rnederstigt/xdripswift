@@ -18,9 +18,9 @@ final class Libre2HistoryRegistry {
         self.persist = persist
     }
 
-    convenience init(url: URL = Libre2HistoryFile.url("phone-history-sensors.json")) throws {
-        let entries = try Libre2HistoryFile.load([Entry].self, from: url, fallback: [])
-        self.init(entries: entries) { try Libre2HistoryFile.save($0, to: url) }
+    convenience init(url: URL = Libre2JournalFile.url("phone-history-sensors.json")) throws {
+        let entries = try Libre2JournalFile.load([Entry].self, from: url, fallback: [])
+        self.init(entries: entries) { try Libre2JournalFile.save($0, to: url) }
     }
 
     func register(_ session: Libre2WatchSession, sensorID: String) throws {

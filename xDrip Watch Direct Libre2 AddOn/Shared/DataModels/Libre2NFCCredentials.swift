@@ -1,12 +1,10 @@
 import Foundation
 
-/// Credentials saved after a Direct Libre NFC reset. The legacy name and fields remain
-/// Codable-compatible with prototypes that had a separate Reclaim via NFC workflow.
-struct Libre2ReclaimState: Codable, Equatable {
-    let id: UUID
+/// Credentials retained after an ordinary NFC scan resets Direct Libre.
+/// Presence means provisioning completed; an unfinished scan uses phoneNFCResetCode.
+struct Libre2NFCCredentials: Codable, Equatable {
     let sensorUID: Data
     let unlockCode: UInt32
-    var nfcConfirmed = false
     var unlockCount: UInt16 = 0
 
     func validate() throws {

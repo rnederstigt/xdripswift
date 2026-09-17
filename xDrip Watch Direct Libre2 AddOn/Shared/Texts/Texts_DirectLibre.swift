@@ -8,7 +8,7 @@ class Texts_DirectLibre {
     // MARK: - Experimental page
 
     static let diagnosticsRecovery = NSLocalizedString(
-        "diagnosticsRecovery", tableName: filename, bundle: .main, value: "Diagnostics & recovery", comment: "Direct Libre settings destination")
+        "diagnosticsRecovery", tableName: filename, bundle: .main, value: "Activity & recovery", comment: "Direct Libre settings destination")
     static let recoveryTitle = NSLocalizedString(
         "recoveryTitle", tableName: filename, bundle: .main, value: "Recovery", comment: "Direct Libre section")
     static let backgroundSection = NSLocalizedString(
@@ -53,7 +53,7 @@ class Texts_DirectLibre {
         comment: "Watch diagnostic notification content")
     static let notificationTestHelp = NSLocalizedString(
         "notificationTestHelp", tableName: filename, bundle: .main,
-        value: "In testing, a notification appearing on the Watch restored immediate delivery of new readings to the phone while both apps stayed in the background. Updates continued after the notification closed, without needing to tap it. This is an experimental workaround, not a guaranteed connection.\n\nOpen both apps to schedule one Watch notification in 30 seconds. After confirmation, return to the watch face and lock the phone. Let the notification appear on the Watch and check subsequent reading times without opening either app. Notification settings and Focus may affect presentation. Another press replaces the pending test.\n\nDetailed diagnostics is optional; enable it beforehand only if you want to record and share the test logs.",
+        value: "In testing, a notification appearing on the Watch restored immediate delivery of new readings to the phone while both apps stayed in the background. Updates continued after the notification closed, without needing to tap it. This is an experimental workaround, not a guaranteed connection.\n\nOpen both apps to schedule one Watch notification in 30 seconds. After confirmation, return to the watch face and lock the phone. Let the notification appear on the Watch and check subsequent reading times without opening either app. Notification settings and Focus may affect presentation. Another press replaces the pending test.",
         comment: "Direct Libre diagnostic instructions")
     static let notificationTestNeedsWatch = NSLocalizedString(
         "notificationTestNeedsWatch", tableName: filename, bundle: .main,
@@ -164,6 +164,26 @@ class Texts_DirectLibre {
         "connecting", tableName: filename, bundle: .main, value: "Connecting",
         comment: "Direct Libre experiment")
 
+    static let scanning = NSLocalizedString(
+        "scanning", tableName: filename, bundle: .main, value: "Scanning",
+        comment: "Watch connection progress")
+
+    static let restarting = NSLocalizedString(
+        "restarting", tableName: filename, bundle: .main, value: "Restarting",
+        comment: "Watch manual connection restart")
+
+    static let waitingToRetry = NSLocalizedString(
+        "waitingToRetry", tableName: filename, bundle: .main, value: "Reconnecting",
+        comment: "Watch automatic connection retry")
+
+    static let bluetoothUnavailableStatus = NSLocalizedString(
+        "bluetoothUnavailableStatus", tableName: filename, bundle: .main, value: "Bluetooth unavailable",
+        comment: "Short Watch connection status")
+
+    static let resetOnPhone = NSLocalizedString(
+        "resetOnPhone", tableName: filename, bundle: .main, value: "Scan on iPhone",
+        comment: "Unresolved handoff requires ordinary NFC recovery on the phone")
+
     static let directConnected = NSLocalizedString(
         "directConnected", tableName: filename, bundle: .main, value: "Direct Connected",
         comment: "Direct Libre experiment")
@@ -272,7 +292,7 @@ class Texts_DirectLibre {
 
     static let retryingConnection = NSLocalizedString(
         "retryingConnection", tableName: filename, bundle: .main,
-        value: "Manual retry: reconnecting the stale Libre connection",
+        value: "Manual restart: reconnecting to Libre",
         comment: "Direct Libre experiment")
 
     static let bluetoothUnavailable = NSLocalizedString(
@@ -290,9 +310,6 @@ class Texts_DirectLibre {
         value: "Failed: Libre connection timed out",
         comment: "Direct Libre experiment")
 
-    static let invalidReading = NSLocalizedString(
-        "invalidReading", tableName: filename, bundle: .main, value: "Failed: invalid Libre reading",
-        comment: "Direct Libre experiment")
 
     static let sensorWarmingUp = NSLocalizedString(
         "sensorWarmingUp", tableName: filename, bundle: .main, value: "Failed: sensor warming up",
@@ -457,19 +474,12 @@ class Texts_DirectLibre {
         "shareActivity", tableName: filename, bundle: .main, value: "Share",
         comment: "Share the combined phone and Watch diagnostic report")
 
-    static let detailedDiagnostics = NSLocalizedString(
-        "detailedDiagnostics", tableName: filename, bundle: .main, value: "Detailed diagnostics",
-        comment: "Direct Libre experiment")
 
-    static let detailedDiagnosticsHelp = NSLocalizedString(
-        "detailedDiagnosticsHelp", tableName: filename, bundle: .main,
-        value: "Enable on both devices while investigating a problem, then turn off to reduce logging. Open the Watch app to change this setting.",
-        comment: "Direct Libre experiment")
 
     static let deliveryDiagnosticsHelp = NSLocalizedString(
         "deliveryDiagnosticsHelp", tableName: filename, bundle: .main,
-        value: "After testing, open xDrip on the Watch to load its saved activity. Up to 240 activity entries per device are retained; exports include complication values and keep the newest entries that fit. Loading is manual; repeat it to refresh the Watch snapshot.",
-        comment: "Instructions for inspecting background delivery diagnostics")
+        value: "Open xDrip on the Watch to load its connection, save and error events. Each device retains up to 240 entries. Loading is manual; repeat it to refresh the Watch snapshot.",
+        comment: "Instructions for loading basic Watch activity")
 
     static let watchActivityUnavailable = NSLocalizedString(
         "watchActivityUnavailable", tableName: filename, bundle: .main,

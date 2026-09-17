@@ -119,7 +119,7 @@ enum Libre2Core {
     ///     - restricts to reading 8 values from data, the 8th value differens only 1 minute from its previous value. (while the others differ 2 minutes). This allows us to sync with previously stored values
     ///     - will extend the result with values from previous reading sessions - if possible. This is only possible of the maximum difference between two reading sessions is 8 minutes
     ///     - sensor time in minutes
-    public static func parseBLEData( _ data: Data, libre1DerivedAlgorithmParameters : Libre2Calibration?, state: inout Libre2ParserState, now: Date = Date(), allowsRawFallback: Bool = true) -> (bleGlucose: [Libre2Sample], sensorTimeInMinutes: UInt16) {
+    public static func parseBLEData( _ data: Data, calibration: Libre2Calibration, state: inout Libre2ParserState, now: Date = Date()) -> (bleGlucose: [Libre2Sample], sensorTimeInMinutes: UInt16) {
 
         // how many values to store in rawGlucoseValues, which is not equal to the amount of values read
         // because Libre 2 gives reading every 2 minutes, then 15
@@ -139,6 +139,11 @@ enum Libre2Core {
         // sensor age in minutes
         guard data.count == ConstantsLibre2.decryptedFrameSize else { return ([], 0) }
         let wearTimeMinutes = word(data[41], data[40])
+        let latestRaw = readBits(data, 0, 0, 14)
+        let latestTemperature = readBits(data, 0, 14, 12) << 2
+        let latest = calibration.glucose(raw: latestRaw, temperature: latestTemperature)
+        guard calibration.isValid, latestRaw > 0, latest.isFinite,
+              latest > 0, latest < ConstantsLibre2.maximumValidGlucose else { return ([], wearTimeMinutes) }
 
         for i in 0 ..< 7 {
 
@@ -189,16 +194,12 @@ enum Libre2Core {
         // create glucosedata for each known rawglucose and add to returnvallue
         for (index, _) in rawGlucoseValues.enumerated() {
 
-            let converted = libre1DerivedAlgorithmParameters?.glucose(raw: rawGlucoseValues[index], temperature: rawTemperatureValues[index]) ?? 0
-            let newGlucoseValue = Libre2Sample(timeStamp: now.addingTimeInterval(-Double(60 * index)), glucoseLevelRaw: converted > 0 && (allowsRawFallback || rawGlucoseValues[index] > 0) ? converted : allowsRawFallback ? Double(rawGlucoseValues[index]) * ConstantsLibre2.rawGlucoseMultiplier : 0)
+            let converted = calibration.glucose(raw: rawGlucoseValues[index], temperature: rawTemperatureValues[index])
+            let newGlucoseValue = Libre2Sample(timeStamp: now.addingTimeInterval(-Double(60 * index)), glucoseLevelRaw: converted > 0 && rawGlucoseValues[index] > 0 ? converted : 0)
 
-            // to handle issue 502 https://github.com/JohanDegraeve/xdripswift/issues/502
-            // if the raw glucose value > 3000 mg/dl, then something is seriously wrong, return an empty array.
-            // this should finally result in a missed reading alert. Normally the user should have had many low alerts before this happens
-            // a limit of 3000 should be enough, the values reported in the issue go above 20000
-            // in case converted, 3000 needs to be multiplied with ConstantsLibre2.rawGlucoseMultiplier
-            if newGlucoseValue.glucoseLevelRaw > (converted > 0 ? 3000 : 3000 * ConstantsLibre2.rawGlucoseMultiplier) {
-                return ([Libre2Sample](), wearTimeMinutes)
+            // Preserve the upstream rejection of implausibly high historical measurements.
+            if newGlucoseValue.glucoseLevelRaw > ConstantsLibre2.maximumValidGlucose {
+                return ([], wearTimeMinutes)
             }
 
             bleGlucose.append(newGlucoseValue)

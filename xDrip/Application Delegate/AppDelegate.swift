@@ -16,8 +16,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - Application Life Cycle
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        Libre2LifecycleDiagnostics.start()
-        Libre2LifecycleDiagnostics.recordSession("Phone did finish launching")
         trace("****************************************", log: log, category: ConstantsLog.categoryAppDelegate, type: .info)
         trace("*** in didFinishLaunchingWithOptions ***", log: log, category: ConstantsLog.categoryAppDelegate, type: .info)
         trace("****************************************", log: log, category: ConstantsLog.categoryAppDelegate, type: .info)

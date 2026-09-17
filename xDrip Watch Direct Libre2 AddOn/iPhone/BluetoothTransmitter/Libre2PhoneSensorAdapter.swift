@@ -28,16 +28,16 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
     }
 
     static func restoreCredentials() {
-        // Only the opt-in experiment's returned/reclaimed credentials are restored here.
+        // Only the opt-in experiment's returned/NFC-reset credentials are restored here.
         let saved = Libre2SessionStore.shared.snapshot
-        if let reclaim = saved.reclaim, reclaim.nfcConfirmed,
-           reclaim.sensorUID == UserDefaults.standard.libreSensorUID {
-            if UserDefaults.standard.libreActiveSensorUnlockCode != reclaim.unlockCode {
-                UserDefaults.standard.libreActiveSensorUnlockCount = reclaim.unlockCount
+        if let nfcCredentials = saved.nfcCredentials,
+           nfcCredentials.sensorUID == UserDefaults.standard.libreSensorUID {
+            if UserDefaults.standard.libreActiveSensorUnlockCode != nfcCredentials.unlockCode {
+                UserDefaults.standard.libreActiveSensorUnlockCount = nfcCredentials.unlockCount
             } else {
-                UserDefaults.standard.libreActiveSensorUnlockCount = max(reclaim.unlockCount, UserDefaults.standard.libreActiveSensorUnlockCount)
+                UserDefaults.standard.libreActiveSensorUnlockCount = max(nfcCredentials.unlockCount, UserDefaults.standard.libreActiveSensorUnlockCount)
             }
-            UserDefaults.standard.libreActiveSensorUnlockCode = reclaim.unlockCode
+            UserDefaults.standard.libreActiveSensorUnlockCode = nfcCredentials.unlockCode
         } else if saved.owner == .phone, let returned = saved.session,
                   returned.sensorUID == UserDefaults.standard.libreSensorUID,
                   returned.unlockCode == UserDefaults.standard.libreActiveSensorUnlockCode {
@@ -170,7 +170,7 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
             var code: UInt32?
             if previous.hasExperimentalState {
                 var candidate = UInt32.random(in: 1...(UInt32.max - UInt32(UInt16.max)))
-                while candidate == 42 || candidate == previous.session?.unlockCode || candidate == previous.reclaim?.unlockCode
+                while candidate == 42 || candidate == previous.session?.unlockCode || candidate == previous.nfcCredentials?.unlockCode
                     || candidate == previous.phoneNFCResetCode || candidate == UserDefaults.standard.libreActiveSensorUnlockCode {
                     candidate = UInt32.random(in: 1...(UInt32.max - UInt32(UInt16.max)))
                 }
@@ -183,7 +183,7 @@ final class Libre2PhoneSensorAdapter: Libre2PhoneSensor {
                 DispatchQueue.main.async {
                     Libre2PhoneHandoff.shared.readingStatus = Libre2PhoneReadingStatus()
                     Libre2PhoneHandoff.shared.status = "Direct Libre reset started. Scan the sensor you want to use."
-                    Libre2PhoneHandoff.shared.notifyWatchOfNFCReset(previousSession: previous.session)
+                    Libre2PhoneHandoff.shared.notifyWatchOfNFCReset()
                 }
             }
             return true

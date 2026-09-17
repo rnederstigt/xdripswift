@@ -1,26 +1,26 @@
-# Testing and validation
+# Validation
 
-This guide separates executable checks from device acceptance. See the [user guide](../README.md) for operation and [architecture](ARCHITECTURE.md) for the behaviour being tested. Source checks and simulated callbacks do not establish radio reliability, watchOS scheduling or remote upload receipt.
+Run checks from the repository root on a Mac with Xcode command-line tools selected. The comparison scripts require the recorded baseline commits. Generated sources, executables and compiler caches stay in temporary directories.
 
-## Run the automated checks
-
-Use a Mac with Xcode and its command-line tools selected. Run from the repository root; the recorded baseline commits must be available for comparison scripts.
+## Automated checks
 
 ```sh
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_integration.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_phone_import_routing.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_location.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_preferences.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_upstream_scanning.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_upstream_relay.py"
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_phone_handoff.py"
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_handoff.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_reconnect.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_phone_alignment.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_history_delivery.py"
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_phone_import_routing.py"
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_preferences.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_background_tasks.py"
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_location.py"
 python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_notification.py"
 ```
 
-Run the shared Swift package separately, keeping generated products outside the repository. This subshell removes only its own temporary directory on exit and preserves the test result:
+Run shared unit tests with build products outside the repository:
 
 ```sh
 (
@@ -30,84 +30,38 @@ Run the shared Swift package separately, keeping generated products outside the 
 )
 ```
 
-| Check | Evidence provided |
-| --- | --- |
-| Shared Swift package | Session/counter transitions, persistence failures, stale messages, cancellation, restart/reset recovery, protocol fixtures, history queues, cleanup confirmations and saved preferences. |
-| `check_integration.py` | Xcode membership and platform separation. |
-| `check_upstream_scanning.py` | NFC reader, callbacks and notices compared with master after removing documented hooks; also checks add-on UI restrictions. See the known failure below. |
-| `check_upstream_relay.py` | Extracted original/current relay handlers retain ordinary behaviour. |
-| `check_watch_reconnect.py` | Production collector with Bluetooth/timer doubles: subscription before unlock, counter ordering, reconnect, manual retry, failures and ownership barriers. |
-| `check_watch_handoff.py` | Production handoff coordinator with explicit disconnect/transport doubles: retirement acknowledgement and replacement PREPARE wait for disconnect, overlapping retirements, restart recovery, stale-message isolation and malformed payloads. |
-| `check_phone_alignment.py` | Phone/Watch trend, arrow, time-gap and unit-rounding parity. |
-| `check_history_delivery.py` | Production Watch coordinator with delivery/storage doubles: independent latest context/live messages during unanswered live/history requests, restored reachability without history promotion, restart, persistence failures, rejections and cleanup. Also executes the production phone context delegate and production scheduling/response methods with a storage spy to verify live priority, coalescing, diagnostic event order and notification ordering. |
-| `check_watch_background_tasks.py` | Production handler with real KVO/main dispatch and a session double: activation, pending data, nested receipt work, independent cancellation, inactive sessions and early cancellation. |
-| `check_watch_notification.py` | Production scheduling helper with notification/WatchKit doubles: one-shot replacement, real alarm isolation, scheduling failure, permission denial/quiet alerts, foreground authorization and overlapping/malformed requests. Does not prove system notification presentation. |
-| `check_phone_import_routing.py` | Ordinary downstream call parity, current/history routing and delayed-sharing preparation. No real upload or app-group delivery. |
-| `check_watch_location.py` | Production location helper with lifecycle doubles: opt-in, permission, foreground start, ownership stop, temporary errors and live accuracy changes. |
-| `check_watch_preferences.py` | Production display adapter: unit/limit persistence, migration, stale settings, relay assignments and complication refresh. |
+The shared package tests state transitions, counter ordering, protocol fixtures, journals, basic activity, unresolved readings and preferences. Platform harnesses execute production code with Bluetooth, WatchConnectivity, storage or location doubles. They verify callback ordering and policy, not real radios or OS scheduling. `swift_test_runner.py` shares compilation and cleanup only; each script selects its own sources and flags.
 
-**Known check failure:** the scanning script's broad ban on `.alert(` rejects the explicit unresolved-readings deletion confirmation. Rechecking during this documentation cleanup passed the preceding NFC source-comparison assertions before failing on that UI restriction; the complete script is not green. This does not identify a scan-path change; the UI assertion needs to distinguish sensor dialogs from the approved deletion confirmation. Do not silently ignore a different failure.
+The scanning comparison checks original NFC commands, callbacks and scan UI outside explicit reset hooks. Experimental-page help and user-requested deletion confirmations are allowed; sensor/transport code may not introduce dialogs. Preference checks compare the reviewed host baseline after removing only the retired diagnostic hooks. Integration checks validate target membership and platform separation.
 
-## Build and hosted tests
+`Libre2PhoneHistorySyncTests` additionally needs the hosted iOS test target to execute real Core Data integration. It is not executed by the macOS package or storage-spy harness.
 
-Build the existing iPhone and Watch targets in Xcode using your own signing settings and the default external DerivedData location. Do not commit personal team identifiers or generated products. Install both targets for protocol/settings compatibility.
+## Current evidence — 2026-09-17
 
-`Libre2PhoneHistorySyncTests` require the hosted `xdripTests` target on an appropriate iOS destination. They exercise Core Data saves, sensor matching, deduplication, slope repairs, metadata and acknowledgement ordering, including live priority followed by historical redelivery; they are not executed by the macOS package. SDK compilation of this file is not execution of its tests.
+- **113 shared unit tests passed.** Tests exclusive to removed tracing features were deleted; counter, persistence, recovery and basic activity coverage remains.
+- **11 Watch handoff, 26 reconnect, 27 Watch delivery, eight phone scheduling, five background-task, five notification, 11 location and four preference checks passed.** Phone availability/retirement, downstream routing and ordinary relay checks passed, as did 476 phone/Watch trend comparisons.
+- A one-off differential check compared the new native-only parser with the pre-reduction parser and collector validation on **1,000 deterministic frames**. Glucose, timestamps and cached parser state matched, including invalid and repeated frames.
+- Affected iPhone and Watch sources passed SDK typechecking. The queued user-info handler is also compiled directly in the handoff harness, covering retirement routing, history acknowledgements and ordinary relay. The Watch host model was subsequently typechecked as a primary file with temporary declarations for its two asset-generated Color names; the earlier add-on-only source checks did not check this method body. Membership and whitespace checks passed. The phone app delegate, Watch notification controller and complication provider match audited upstream master exactly.
+- No linked/signed build or physical-device test was completed for this reduction. Earlier full builds were blocked by local asset/simulator tooling. SDK typechecks are not installation or runtime evidence.
 
-### Recorded evidence
+## Device acceptance
 
-Manual Watch notification (device run, 2026-09-16): the test notification was scheduled at 17:48:14 UTC, followed by both apps entering the background and live reachability becoming false. At 17:48:58.565 the Watch recorded `notificationTest=true`; at 17:48:58.570 it recorded restored reachability. Six subsequent measurements, from 17:49:13 through 17:54:12, reached the phone in approximately 0.1–0.4 seconds each and were saved successfully. Logs showed no intervening app foreground transition or process restart. The user reported that the notification restored delivery and that communication continued after it closed. Earlier phone-only notification testing did not show the same sustained recovery. This supports the manual workaround described in the README; it does not establish the underlying OS mechanism, long-term reliability or a fixed delivery guarantee. The nominal 30-second trigger did not mean presentation occurred exactly 30 seconds after scheduling.
-
-Lifecycle diagnostics (2026-09-16): **117 shared tests and six background-task checks passed**, including tracing-off/ordinary-mode silence, retained callback timestamps, process identification and one completion/cancellation record per started task. Changed iPhone/Watch sources passed SDK typechecking; source membership and whitespace checks passed. These checks do not establish notification presentation, OS scheduling or on-device delivery order. The lifecycle records are observations only; no automatic session activation, transmission or timer was added.
-
-NFC retirement recovery (2026-09-16): **115 shared tests and five Watch handoff-coordinator checks passed**, including lost delivery followed by repeated scans/restart, overlapping live/queued retirements, disconnect-before-PREPARE, malformed messages and protection of newer sessions. Changed phone and Watch production sources passed their SDK typechecks; Xcode membership and whitespace checks passed. These are source/host checks, not a signed build or physical-radio test. Install both updated apps and verify the device recovery sequence above; the original NFC reader/transmitter sources were not changed for this correction.
-
-Launch-crash correction (2026-09-16): replaced two extension-only singleton calls with `WKApplication.shared()` in location and delivery code. Eleven location checks, 29 Watch delivery checks, nine phone scheduling checks, five background-task checks and integration checks passed. The changed production code and background-task scene passed Watch SDK typechecking. Integration checks now reject `WKExtension.shared()` in Watch target sources. These checks do not reproduce a device launch; verify the rebuilt app opens with saved Direct Libre ownership and background-location settings, then receives a reading. No app-group or NFC changes were made for this correction.
-
-Consolidation validation (2026-09-16): **111 shared tests, 29 Watch delivery checks, nine phone scheduling checks and five background-task checks passed**. Identical in-flight latest/context/history deliveries share one save while retaining individual batch responses; failures and sensor rejections cannot send incorrect success acknowledgements. Tracing tests cover default-off behaviour, persisted settings, confirmed responses and malformed requests. Background-task checks exercise real KVO and main-queue dispatch with a session double, including nested receipts and cancellation. The phone scheduling checks use a storage spy, not Core Data.
-
-Xcode membership, ordinary relay, downstream import routing and four preference-adapter checks passed. Changed iPhone importer/UI sources passed iOS SDK typechecking against the app's actual declarations. Watch runtime sources passed watchOS SDK typechecking with preview-only macros omitted in temporary copies and generated shared asset symbols supplied from the complication target. These are source checks, not linked or signed builds. Both unsigned scheme builds stopped in asset compilation because the local CoreSimulator service could not provide simulator runtimes. Hosted Core Data tests, rendered UI, physical-device task completion and delivery latency still require device validation. Build and test products were directed outside the repository. The known scanning-check UI assertion above still fails; no NFC production files were changed in this consolidation.
-
-The accuracy-control baseline is [`0a6b202`](https://github.com/rnederstigt/xdripswift/commit/0a6b202). Its validation recorded **96 host tests, 11 location-session checks and four preference-adapter checks passing**, plus membership and iPhone/Watch SDK source checks. This is recorded evidence, not a claim that every check was rerun for a documentation edit.
-
-Earlier retained validation includes 21 collector checks, 476 trend comparisons, 96 ordinary downstream parity cases, four import-routing cases and four delayed-sharing checks. These counts describe their respective runs, not one combined current test run.
-
-Full unsigned builds were blocked by the local simulator-runtime service during existing widget/complication asset compilation. Hosted iPhone database tests were compiled but not executed. Complete signed builds, device timing, background reliability, battery comparisons and end-to-end integrations require validation on the installed revision. No automated result proves those outcomes. Git history retains the earlier dated reports.
-
-## Device acceptance checklist
-
-Record app revision, iPhone/Watch model and OS, sensor type, settings, reachability and timestamps. Enable **Detailed diagnostics** on both devices before tests that inspect delivery or complication entries, and disable it afterwards. Compare ordinary behaviour against the named upstream baseline where applicable.
+Install both current companion apps and test without a debugger where background execution matters. Record versions, time, sensor and relevant settings.
 
 | Area | Verify |
 | --- | --- |
-| Ordinary operation | Without Direct Libre state, NFC success/cancel/failure, original notices/retries and relayed readings work without an experimental scan dialog. |
-| Forward switch | Checklist requires a recent authenticated phone reading. Watch connects only after phone disconnection; antenna turns green before the first reading, including on “Waiting”. Confirm units, graph and complication. |
-| Return and interruption | Interrupt each direction, restart either app and retry from the phone. Neither old owner may resume authentication prematurely. Returning during a manual reconnect must also stop Watch retries. |
-| Reconnect | Leave/re-enter range. Test idle, pending, fresh and three-minute-stale double taps on both view types. Confirm one appropriate reconnect and advancing counters, without repeated unlocks after an invalid sample. Measure actual recovery times. |
-| NFC recovery | Delete the phone sensor during an unresolved session. With Watch unreachable, cancel and retry ordinary NFC using a replacement sensor. Verify fresh phone readings. Restart both apps after repeated resets; opening them must retire the Watch's old session even though the phone no longer has its payload. A new PREPARE must wait for old Watch disconnect. Later delivery of old revocations must not stop a newer session. |
-| History | Collect offline, reconnect and repeat delivery. Import once into the correct sensor, including across return/sensor change. Deleted/unknown sensor readings must remain unresolved without blocking valid batches. Storage failures retain pending data. |
-| Tracing and shared imports | Tracing is off by default on both devices. Enable while reachable and confirm both devices retain the setting after restart; loading alone must not enable it. Disable and confirm detailed delivery/complication events stop. With tracing on, simultaneous latest/context/history copies should join one import and receive correctly identified responses only after saving. Later duplicates and deleted sensors must still be validated. |
-| Watch background tasks | Run without an attached debugger. Send background history acknowledgements and a revoke while the Watch is backgrounded; confirm receipt processing persists before completion, ordinary relay still works, and no WatchConnectivity watchdog termination occurs. Cancellation must not stop BLE collection. |
-| Alert-associated delivery recovery | Enable detailed diagnostics before handoff; keep both apps backgrounded and leave the missed-readings alert untouched. Note its appearance and the first fresh phone value, then export promptly. Compare `Watch notification received`, app-state events, `WC reachability changed`, paired `WC background task` records and `Phone callback entered`. Process IDs distinguish restarts. Callback time is not proof of physical arrival/presentation; app state is sampled later on main (`logWaitMs`). App/notification hooks deliberately do not create/sample WCSession; use adjacent session events. Repeat at two alert thresholds without changing collection/delivery settings. |
-| Background retry suppression | Keep both apps backgrounded after a reading is collected. A completed batch should show acknowledgement waiting, rather than be resubmitted at each following minute. With no acknowledgement and no outstanding transfer, the first normal delivery event at or after five minutes may retry the same batch. Reopen/restart the Watch within the interval: current live delivery remains available but history is not duplicated. A valid saved acknowledgement releases the next historical batch immediately. Verify all readings eventually import once. |
-| Background latest context | With both apps backgrounded and `reachable=false`, collect several readings while a history batch awaits acknowledgement. Every new sample should show `Watch latest context published`, even during the five-minute history retry interval. Match it to `Phone callback entered` with `route=applicationContext`, then the latest import/save. Pending context may be replaced, so not every publication needs a callback. Compare newest sample age at the phone with the previous build, without opening either app. After restart/repeated events, unchanged context must not be republished. All readings must still arrive through history without duplicates. No fixed delivery time is promised. |
-| Independent latest delivery | Collect a backlog while the phone is unreachable, then restore communication with Watch xDrip running in the foreground or eligible background execution. Confirm the current value reaches the phone before history finishes, older gaps subsequently fill without duplicate entries, and current-reading effects are not repeated. Repeat with both apps in the background, a Watch restart and rapid reachability changes. Compare actual phone readings and configured sharing destinations, not only the Live Activity. Measure receipt timestamps; no fixed latency is promised. |
-| Complication flicker diagnostics | Install both updated apps and the complication extension. Note the last phone value before handing off, then compare Watch app and watch-face values during collection and after a restart. Match `Complication: Watch cache` (`source=startup-cache`, `direct`, or `phone-relay`) with `snapshot`/`timeline` sample times, raw values and displayed text. Record the time of any flicker; provider entries do not prove which cached image watchOS displayed. Load and share promptly. |
-| Delivery diagnostics | Reproduce a 7–10 minute delay without opening either app. Note whether the Watch complication receives new measurements. Then open Watch xDrip, load its activity from the phone page, and share the combined report promptly before older entries roll out. Match sample time, minute and handoff ID: collection with `reachable=false` indicates skipped live messaging, while context publication remains available; send/error records distinguish attempted failures. Match `Watch background submitted` to `Watch history waiting` and `Watch background finished` by batch ID. `outstanding` counts matching WatchConnectivity transfers; `waitingBehind` counts pending readings outside that batch. A growing backlog behind an outstanding transfer differs from waiting for a live reply or retry interval. Transport completion is separate from the persisted phone acknowledgement and must not remove readings. Confirm duplicate unchanged waiting events are suppressed, and export promptly because the 60 KB Watch snapshot limit may retain fewer than 240 entries. Compare `Phone callback entered` → `Phone main handler started` (`mainQueueWaitMs`) → received → import started → saved. Early callback entry with a late main handler points to main-queue handling; late callback entry leaves system delivery/phone execution scheduling as the unresolved interval. Callback timestamps are retained only when the main handler eventually runs. Compare each device's own timestamps before inferring cross-device latency. Confirm loading is read-only, does not auto-refresh, preserves the previous snapshot on failure, and works after a Watch restart. |
-| Experimental page | Check phone, Watch, in-progress and failed ownership states; the single switch retains its action and guards. A satisfied checklist starts collapsed; a new failed requirement expands it, excluding paused phone checks from counts. Turning background collection off hides accuracy. Verify notification help/results, three-event activity expansion, diagnostics navigation/back, reachable/unreachable controls, unchanged cleanup confirmation and full log export. Latest phone time may lag the Watch and must not be described as a live Watch connection. Check large text and VoiceOver on device. |
-| Notification test | With both apps updated/reachable, enable detailed diagnostics and tap **Test Watch notification**. Confirm a Watch-local notification after 30 seconds with both apps backgrounded; no glucose values or alarm actions appear. Repeat before firing to verify only one pending test. Test denied notifications, first permission approval/refusal, disabled alerts, lost replies and an older Watch version. Confirm ordinary alarms remain scheduled. Scheduling is acknowledged only after success. Compare `notificationTest=true` with reachability, latest sends and phone callbacks for five minutes after the notification closes, without opening either app. Focus/suppression and actual delivery require device testing. |
-| Explicit cleanup | Inspect unresolved count, cancel, then delete. Pending uploads/phone history remain. New unresolved data or a Watch restart invalidates an old confirmation; a lost reply must not schedule a background deletion. |
-| Phone downstream effects | Fresh imports refresh missed-reading scheduling and configured live effects. Old/future/duplicate/superseded/ended-sensor values must not act as current readings. Test optional smoothing/cadence and verify actual Nightscout, HealthKit, Dexcom Share and OS-AID receipt, including nonzero sharing delay and existing cursor limits. |
-| Preferences | Send all four limits and units, change limits alone, then restart offline before the first direct reading. Verify graph/complication and both units in direct and relay modes. Test an existing installation's cached preferences. |
-| Background location | Off means no prompt. Enable while Watch owns the sensor; test foreground start, wrist-down and watch-face operation, stationarity, movement, poor fixes and range loss. Disable/return/reset stops location when delivered. Permission errors leave BLE untouched; a new background launch waits for foreground. |
-| Accuracy | Confirm each 100 m / 1 km / 3 km selection after acknowledgement and restart, both while off and during collection. Unreachable/older companions must not display an unconfirmed change. |
-| Water | Open xDrip, enable Water Lock manually and test wrist lowering/submersion, including beyond 30 minutes. Record execution and reception separately; neither automatic lock nor underwater connectivity is promised. |
-| Upgrade | Check completed handoffs and saved queues without unnecessary rescanning. Legacy unfinished reclaim state should direct the user to ordinary NFC recovery. |
+| Ordinary phone operation | NFC success/cancel/failure and ordinary relay retain original notices and behaviour when Direct Libre is unused. |
+| Switching | Phone → Watch and return; interrupt each phase, restart and retry. No authentication before activation or confirmed release. |
+| NFC recovery | Reset an unresolved/deleted sensor with Watch unreachable, then restore communication. Old commands cannot reactivate the retired handoff; a new switch works. |
+| Reconnection | Range loss, Bluetooth unavailable, double tap while idle/scanning/pending/connected, rapid taps and return during restart. Check antenna progress, retained history and advancing counters. |
+| Native data/display | Compare phone/Watch glucose, age, trend, graph and complication; invalid frames do not disconnect or alter saved history. Test units and limits after offline restart. |
+| Delivery | Collect offline and reconnect; latest data arrives independently of history. Duplicate/failed saves retain data without repeating live effects. Verify actual configured uploads/sharing and missed-reading scheduling. |
+| Unresolved data | Unknown/deleted sensor readings do not block valid batches. Cancel/delete with confirmation; pending and phone history remain. |
+| Activity | Basic log and manual Watch loading/export work without a tracing setting. No complication-value or process/timing diagnostics are produced. |
+| Background support | Location off/on, three accuracy settings, permission changes, restart, wrist-down, stationarity and poor reception. Return/disable stops location when the command arrives. |
+| Notification workaround | With both apps backgrounded, trigger the manual test and leave it untouched. Compare subsequent measurement timestamps without opening apps. No automatic notification or glucose alarm is introduced. |
+| Water | Enable Water Lock manually; verify frontmost behaviour separately from glucose reception. Underwater BLE and continuous execution are not guaranteed. |
 
-For battery/background trials, use matched 90–120 minute or longer runs without a debugger, repeated at each accuracy and with the option off. Keep screen use, movement, phone reachability and other location users comparable. Record percentage points per hour, distinct measurement timestamps, gaps and reconnects. An option-off run that becomes suspended is not an equal-work estimate of GPS cost. Measure data continuity alongside energy use.
+For battery comparisons use repeated, matched 90–120 minute runs at each accuracy and with location off, controlling screen use, movement and reachability. Measure fresh readings and gaps alongside percentage points per hour; a suspended run is not equivalent work.
 
-## Diagnose an unexpected Watch closure
-
-Record the time/timezone, model/watchOS, app revision, foreground/background state and phone reachability. Export the complete Watch crash/termination report and relevant JetsamEvent from paired-device/Xcode logs; retain the matching archive and dSYM. Confirm the process was terminated before attributing a memory-pressure report to it. Automatic reconnection does not establish the cause.
-
-The bounded activity journal is connection/delivery diagnostics, not a crash reporter. **Load Watch activity** retrieves only the retained Watch entries, not every past event. Correlate the shared report with console and measurement timestamps. See [Apple's crash-diagnosis guide](https://developer.apple.com/documentation/xcode/diagnosing-issues-using-crash-reports-and-device-logs).
+For crashes retain the complete device crash/termination report and matching build/dSYM. The basic activity log cannot diagnose process scheduling or prove a crash cause; detailed lifecycle and complication tracing have been removed.

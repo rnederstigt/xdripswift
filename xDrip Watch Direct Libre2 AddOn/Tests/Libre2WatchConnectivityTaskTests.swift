@@ -10,12 +10,6 @@ final class WCSession: NSObject {
 }
 
 // Capture diagnostics without introducing WatchKit into this host-side scheduling test.
-enum Libre2LifecycleDiagnostics {
-    static var events: [(String, String)] = []
-    static func recordSession(_ name: String, session: WCSession, details: String = "") {
-        events.append((name, details))
-    }
-}
 
 @main private enum BackgroundTaskTests {
     @MainActor static func main() async {
@@ -77,15 +71,6 @@ enum Libre2LifecycleDiagnostics {
         await tasks.handle()
         print("PASS: Early cancellation and repeated tasks leave no stranded continuation")
 
-        let starts = Libre2LifecycleDiagnostics.events.filter { $0.0 == "WC background task started" }
-        let finishes = Libre2LifecycleDiagnostics.events.filter { $0.0 == "WC background task finished" }
-        precondition(!starts.isEmpty && starts.count == finishes.count)
-        for start in starts {
-            precondition(finishes.filter { $0.1.hasPrefix(start.1 + " ") }.count == 1)
-        }
-        precondition(finishes.contains { $0.1.contains("cancelled=true") })
-        precondition(finishes.contains { $0.1.contains("cancelled=false") })
-        print("PASS: Lifecycle records pair every started task with exactly one completion or cancellation")
     }
 }
 #endif

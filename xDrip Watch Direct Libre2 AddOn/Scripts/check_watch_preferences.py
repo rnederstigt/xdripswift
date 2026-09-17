@@ -6,26 +6,22 @@ The collector, display formatting and WidgetKit delivery are replaced with doubl
 """
 from pathlib import Path
 import subprocess
-import tempfile
+import re
+from swift_test_runner import run_swift, test_directory
 
 addon = Path(__file__).resolve().parents[1]
 repo = addon.parent
 host_path = 'xDrip Watch App/DataModels/WatchStateModel.swift'
 host = (repo / host_path).read_text()
-before = subprocess.check_output(['git', 'show', 'e9e616e:' + host_path], cwd=repo, text=True)
-expected = before.replace('restoreDirectLibreUnits()', 'restoreDirectLibrePreferences()').replace(
-    'let unitsChanged = receiveDirectLibreUnits(dictionary)', 'let preferencesChanged = receiveDirectLibrePreferences(dictionary)').replace(
-    'return unitsChanged', 'return preferencesChanged')
-# Strip only the separately tested delivery/diagnostic integration; keep comparing the
-# entire remaining host against the original preference hooks.
-compared = host.replace('            recordLibreComplicationCache(complicationSharedUserDefaultsModel, source: directLibre.isDirect ? "direct" : "phone-relay")\n', '')
-compared = compared.replace('''    func session(_: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
-        directLibre.historyTransferFinished(userInfoTransfer.userInfo, error: error)
-    }
-
-''', '')
-compared = compared.replace('Libre2WatchConnectivityTasks.shared.receive {', 'DispatchQueue.main.async {')
-assert compared == expected, 'Host changes exceed the documented preferences/delivery hooks'
+# This reviewed host baseline includes the delivery/lifecycle hooks added after the
+# original preference work. Compare the whole file; no adapter-only change needs a host edit.
+expected = subprocess.check_output(['git', 'show', '58d40a4:' + host_path], cwd=repo, text=True)
+# Remove exactly the retired investigation hooks from the reviewed baseline.
+expected = re.sub(r'^ *Libre2LifecycleDiagnostics\.recordSession\([^\n]*\n(?: *details:[^\n]*\n)?', '', expected, flags=re.M)
+expected = re.sub(r'^ *recordLibreComplicationCache\([^\n]*\n', '', expected, flags=re.M)
+expected = expected.replace('    func session(_: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {\n        directLibre.historyTransferFinished(userInfoTransfer.userInfo, error: error)\n    }\n', '')
+expected = expected.replace('if userInfo[Libre2HandoffMessage.retiredIDsKey] != nil\n                || (try? Libre2HandoffMessage.decode(userInfo).kind) == .revoke {', 'if userInfo[Libre2HandoffMessage.retiredIDsKey] != nil {')
+assert host == expected, 'Host changes exceed the reviewed functional hooks and diagnostic removals'
 assert host.index('restoreDirectLibrePreferences()') < host.index('directLibre.restore()')
 assert 'processedUpdate = processStatusFromDictionary(dictionary: statusDictionary)' in host
 
@@ -42,27 +38,9 @@ extension Date { func daysAndHoursAgo(appendAgo: Bool) -> String { "recent" } }
 enum Texts_WatchApp { static let lastReading = "Last reading" }
 struct Libre2Sample { let timeStamp: Date; let glucoseLevelRaw: Double }
 protocol Libre2WatchDisplay: AnyObject {}
-final class Libre2ActivityLog {
-    static let shared = Libre2ActivityLog()
-    let isTracingEnabled = false
-    func record(_ message: String) {}
-}
-enum Libre2SessionStore {
-    struct Snapshot { let hasExperimentalState = false }
-    static let shared = Libre2SessionStore.SnapshotStore()
-    struct SnapshotStore { let snapshot = Snapshot() }
-}
-final class Libre2ComplicationDiagnostics {
-    static let shared = Libre2ComplicationDiagnostics()
-    func setEnabled(_ enabled: Bool) {}
-    static func message(_ event: String, value: Double?, sampleDate: Date?, displayValue: String, details: String) -> String { event }
-}
-extension Double {
-    func mgDlToMmolAndToString(mgDl: Bool) -> String { String(self) }
-}
 final class DirectMode {
     var isDirect = true
-    func retryConnection() {}
+    func restartConnection() {}
 }
 struct Publisher { func send() {} }
 final class WatchStateModel {
@@ -144,8 +122,7 @@ code += r'''
     }
 }
 '''
-with tempfile.TemporaryDirectory(prefix='direct-libre-preferences-') as directory:
-    work = Path(directory)
+with test_directory('direct-libre-preferences-') as work:
     main = work / 'PreferencesProbe.swift'
     main.write_text(code)
     binary = work / 'preferences-tests'
@@ -154,6 +131,7 @@ with tempfile.TemporaryDirectory(prefix='direct-libre-preferences-') as director
                addon / 'Shared/Constants/ConstantsLibre2.swift',
                addon / 'Shared/Managers/Libre2ReadingPipeline.swift',
                repo / 'xDrip Watch Complication/DataModels/ComplicationSharedUserDefaultsModel.swift']
-    subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-module-cache-path', str(work / 'cache'),
-                    *map(str, sources), str(main), '-o', str(binary)], check=True)
-    subprocess.run([str(binary)], check=True)
+    run_swift(binary, [
+        *map(str, sources),
+        main,
+    ], flags=['-swift-version', '5'])

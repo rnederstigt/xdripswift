@@ -24,7 +24,7 @@ final class Libre2WatchManager {
         handoff.onCollectedReading = { [weak self] sample, sensorMinute, session in
             self?.historySync.collect(sample, sensorMinute: sensorMinute, session: session)
         }
-        handoff.onStatus = { [weak self] _ in
+        handoff.onChange = { [weak self] in
             self?.display?.refreshLibreConnectionStatus()
         }
         handoff.onReadings = { [weak self] samples, sensorAge in
@@ -33,20 +33,14 @@ final class Libre2WatchManager {
     }
 
     var isDirect: Bool { handoff.isDirect }
-    var isConnected: Bool { handoff.isConnected }
+    var connectionState: Libre2WatchCollector.ConnectionState { handoff.connectionState }
     var indicatorText: String { handoff.indicatorText }
 
     func restore() { handoff.restore() }
 
-    func retryConnection() { handoff.retryConnection() }
+    func restartConnection() { handoff.restartConnection() }
 
     func connectionActivated() { historySync.resume() }
-
-    func historyTransferFinished(_ dictionary: [String: Any], error: Error?) {
-        DispatchQueue.main.async {
-            self.historySync.transferFinished(dictionary, error: error)
-        }
-    }
 
     /// Existing host hook also accepts sensor-matching rejections; no extra WCSession route is needed.
     @discardableResult
@@ -57,12 +51,7 @@ final class Libre2WatchManager {
     func receive(_ dictionary: [String: Any], reply: @escaping ([String: Any]) -> Void) {
         Libre2WatchConnectivityTasks.shared.receive {
             if dictionary[Libre2ActivityLog.requestKey] != nil {
-                let entries = Libre2ComplicationDiagnostics.shared.entries.map {
-                    Libre2ActivityLog.Entry(id: $0.id, date: $0.date, message: $0.message)
-                }
-                Libre2ActivityLog.shared.receive(dictionary, additionalEntries: entries, reply: reply)
-                Libre2ComplicationDiagnostics.shared.setEnabled(Libre2ActivityLog.shared.isTracingEnabled
-                    && Libre2SessionStore.shared.snapshot.hasExperimentalState)
+                Libre2ActivityLog.shared.receive(dictionary, reply: reply)
                 return
             }
             if dictionary[Libre2NotificationTest.requestKey] != nil,

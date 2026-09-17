@@ -138,7 +138,6 @@ final class WatchStateModel: NSObject, ObservableObject {
         self.session = session
         super.init()
 
-        Libre2LifecycleDiagnostics.recordSession("Watch model initialized", session: session)
         restoreDirectLibrePreferences()
         directLibre.restore()
         session.delegate = self
@@ -811,7 +810,6 @@ final class WatchStateModel: NSObject, ObservableObject {
         // the user's device - this allows several copies of the app to be installed without cross-contamination of widget/complication data
         if let stateData = try? JSONEncoder().encode(complicationSharedUserDefaultsModel) {
             sharedUserDefaults.set(stateData, forKey: "complicationSharedUserDefaults.\(Bundle.main.mainAppBundleIdentifier)")
-            recordLibreComplicationCache(complicationSharedUserDefaultsModel, source: directLibre.isDirect ? "direct" : "phone-relay")
         }
 
         // now that the new data is stored in the app group, try to force the complications to reload
@@ -829,8 +827,6 @@ extension WatchStateModel: WCSessionDelegate {
     }
 
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-        Libre2LifecycleDiagnostics.recordSession("WC activation completed", session: session,
-            details: "result=\(activationState.rawValue) error=\(error != nil)")
         // keep Watch state changes on the main queue because WCSession delivers delegate callbacks on a non-main queue
         DispatchQueue.main.async { [weak self] in
             guard let self = self, activationState == .activated else { return }
@@ -843,7 +839,6 @@ extension WatchStateModel: WCSessionDelegate {
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
-        Libre2LifecycleDiagnostics.recordSession("WC reachability changed", session: session)
         directLibre.recordReachability()
         DispatchQueue.main.async {
             // retry AGP requests that were made before the phone became reachable
@@ -853,9 +848,6 @@ extension WatchStateModel: WCSessionDelegate {
 
     func session(_: WCSession, didReceiveMessageData _: Data) {}
 
-    func session(_: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
-        directLibre.historyTransferFinished(userInfoTransfer.userInfo, error: error)
-    }
 
     func session(_: WCSession, didReceiveMessage message: [String: Any]) {
         Libre2WatchConnectivityTasks.shared.receive {
@@ -873,8 +865,7 @@ extension WatchStateModel: WCSessionDelegate {
 
     func session(_: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         Libre2WatchConnectivityTasks.shared.receive {
-            if userInfo[Libre2HandoffMessage.retiredIDsKey] != nil
-                || (try? Libre2HandoffMessage.decode(userInfo).kind) == .revoke {
+            if userInfo[Libre2HandoffMessage.retiredIDsKey] != nil {
                 self.directLibre.receive(userInfo, reply: { _ in })
                 return
             }
