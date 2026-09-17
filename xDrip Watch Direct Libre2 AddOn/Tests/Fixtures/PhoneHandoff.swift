@@ -1,26 +1,4 @@
-#!/usr/bin/env python3
-"""Exercise phone availability and NFC retirement delivery with WCSession doubles.
 
-Production methods run unchanged; these checks cover dispatch policy, not radio delivery.
-"""
-from pathlib import Path
-from swift_test_runner import run_swift, test_directory
-
-addon = Path(__file__).resolve().parents[1]
-source = (addon / 'iPhone/Managers/Libre2PhoneHandoff.swift').read_text()
-
-
-def declaration(name):
-    start = source.index('    ' + name)
-    brace = source.index('{', start)
-    depth, end = 1, brace + 1
-    while depth:
-        depth += (source[end] == '{') - (source[end] == '}')
-        end += 1
-    return source[start:end]
-
-
-code = r'''
 import Foundation
 enum Activation { case activated, inactive }
 final class WCSession {
@@ -52,12 +30,8 @@ final class Phone {
     private var lastWatchAvailability: WatchAvailability?
     var refreshes = 0
     func refreshChecklist() { refreshes += 1 }
-'''
-for name in ['var reachable:', 'private struct WatchAvailability:', 'func recordReachability()',
-             'private var retiredSessionsDictionary:', 'func notifyWatchOfNFCReset()',
-             'private func syncRetiredSessions()']:
-    code += declaration(name) + '\n'
-code += r'''
+/* @source:phone_methods */
+
 }
 let phone = Phone()
 let session = WCSession.default
@@ -103,8 +77,3 @@ phone.notifyWatchOfNFCReset()
 precondition(session.queued.count == 2 && session.live.count == 1)
 precondition(phone.store.snapshot.retiredIDs == [retiredID])
 print("PASS: NFC retirement sends IDs only, queues offline when activated, and retains the journal")
-'''
-with test_directory('direct-libre-phone-handoff-') as work:
-    main = work / 'main.swift'
-    main.write_text(code)
-    run_swift(work / 'phone-handoff-tests', [main], flags=['-swift-version', '5'])

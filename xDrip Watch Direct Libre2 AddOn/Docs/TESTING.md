@@ -1,48 +1,54 @@
 # Validation
 
-Run checks from the repository root on a Mac with Xcode command-line tools selected. The comparison scripts require the recorded baseline commits. Generated sources, executables and compiler caches stay in temporary directories.
+Run from the repository root on a Mac with Xcode command-line tools selected. Source comparisons need the recorded baseline commits in local Git history; they never fetch or update master.
 
 ## Automated checks
 
-```sh
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_integration.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_upstream_scanning.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_upstream_relay.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_phone_handoff.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_handoff.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_reconnect.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_phone_alignment.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_history_delivery.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_phone_import_routing.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_preferences.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_background_tasks.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_location.py"
-python3 "xDrip Watch Direct Libre2 AddOn/Scripts/check_watch_notification.py"
-```
-
-Run shared unit tests with build products outside the repository:
+One command runs the shared unit tests and all four groups of platform checks:
 
 ```sh
-(
-    test_build=$(mktemp -d "${TMPDIR:-/tmp}/direct-libre-tests.XXXXXX") || exit 1
-    trap 'rm -rf "$test_build"' EXIT
-    swift test --package-path "xDrip Watch Direct Libre2 AddOn" --scratch-path "$test_build"
-)
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/run_tests.py"
 ```
 
-The shared package tests state transitions, counter ordering, protocol fixtures, journals, basic activity, unresolved readings and preferences. Platform harnesses execute production code with Bluetooth, WatchConnectivity, storage or location doubles. They verify callback ordering and policy, not real radios or OS scheduling. `swift_test_runner.py` shares compilation and cleanup only; each script selects its own sources and flags.
+| Group | Coverage |
+| --- | --- |
+| `core` | Shared protocol, counters, ownership, journals, reading queues and settings. |
+| `switching` | Phone availability/NFC retirement delivery, Watch handoff, reconnects and double tap. |
+| `sync` | Latest/history delivery, phone import scheduling and downstream consumer routing. |
+| `watch-support` | Persisted display preferences, background tasks, optional location and notification testing. |
+| `integration` | Xcode membership, original NFC/relay behaviour and phone/Watch calculation alignment. |
 
-The scanning comparison checks original NFC commands, callbacks and scan UI outside explicit reset hooks. Experimental-page help and user-requested deletion confirmations are allowed; sensor/transport code may not introduce dialogs. Preference checks compare the reviewed host baseline after removing only the retired diagnostic hooks. Integration checks validate target membership and platform separation.
+To run selected groups, append their names, for example `switching sync`. The runner prints each result, continues after a failed check and returns a nonzero exit status if any check fails. Each Swift harness keeps its own platform doubles and executable. `Scripts/test_support.py` shares source extraction, compilation and temporary-directory cleanup.
 
-`Libre2PhoneHistorySyncTests` additionally needs the hosted iOS test target to execute real Core Data integration. It is not executed by the macOS package or storage-spy harness.
+Larger doubles and scenarios live in `Tests/Fixtures/*.swift`. Their `@source` markers are replaced with **current production code** by the group modules; they are not frozen copies of app methods. SwiftPM excludes this directory because these fixtures need separate executables or source substitution. Platform checks simulate callbacks and storage; they do not prove radio delivery, OS scheduling or real Core Data behaviour.
+
+Generated sources, executables and compiler caches are removed from temporary directories after each check. In an already sandboxed runner that rejects SwiftPM's nested sandbox, use `--disable-package-sandbox`; ordinary local runs do not need it.
+
+## Xcode builds and hosted tests
+
+Add `--build` to run actual unsigned iPhone and Watch builds after the selected checks:
+
+```sh
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/run_tests.py" integration --build
+```
+
+These use the repository's `xdrip` and `xDrip Watch App` schemes, real SDKs, assets and linked targets. No preview removal or asset-symbol stand-ins are used. Build products stay outside the repository and are removed afterwards; full build logs remain in the printed temporary directory. Set `--output /absolute/path/outside/repository` to choose that log directory. Unsigned builds cannot establish signing, installation or device behaviour.
+
+`Libre2PhoneHistorySyncTests` needs the hosted iOS test target for real Core Data integration. Choose an installed simulator from Xcode's destinations and pass it explicitly:
+
+```sh
+python3 "xDrip Watch Direct Libre2 AddOn/Scripts/run_tests.py" sync \
+  --ios-destination 'platform=iOS Simulator,id=YOUR-SIMULATOR-UUID'
+```
+
+Hosted tests and full builds are reported separately; neither is implied by passing the macOS tests.
 
 ## Current evidence — 2026-09-17
 
-- **113 shared unit tests passed.** Tests exclusive to removed tracing features were deleted; counter, persistence, recovery and basic activity coverage remains.
-- **11 Watch handoff, 26 reconnect, 27 Watch delivery, eight phone scheduling, five background-task, five notification, 11 location and four preference checks passed.** Phone availability/retirement, downstream routing and ordinary relay checks passed, as did 476 phone/Watch trend comparisons.
-- A one-off differential check compared the new native-only parser with the pre-reduction parser and collector validation on **1,000 deterministic frames**. Glucose, timestamps and cached parser state matched, including invalid and repeated frames.
-- Affected iPhone and Watch sources passed SDK typechecking. The queued user-info handler is also compiled directly in the handoff harness, covering retirement routing, history acknowledgements and ordinary relay. The Watch host model was subsequently typechecked as a primary file with temporary declarations for its two asset-generated Color names; the earlier add-on-only source checks did not check this method body. Membership and whitespace checks passed. The phone app delegate, Watch notification controller and complication provider match audited upstream master exactly.
-- No linked/signed build or physical-device test was completed for this reduction. Earlier full builds were blocked by local asset/simulator tooling. SDK typechecks are not installation or runtime evidence.
+- **113 shared unit tests and all 13 platform/source checks passed**, including handoff, reconnect, delivery, preferences, downstream routing and 476 phone/Watch trend comparisons. The four integration checks were rerun successfully after restoring `Libre2PhoneSensorAdapter.swift` from the committed version to resolve an editor version conflict.
+- During consolidation, all **13 generated Swift compiler inputs and their flags matched the previous launchers exactly**. No production source or behavioural test was removed.
+- Both full unsigned Xcode builds were attempted with Xcode 26.3. Asset compilation failed because local CoreSimulator services/runtimes were unavailable. These are failed builds, not successful SDK validation.
+- Hosted Core Data tests and physical-device acceptance were not run for this test-only consolidation.
 
 ## Device acceptance
 

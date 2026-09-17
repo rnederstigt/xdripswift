@@ -1,33 +1,4 @@
-#!/usr/bin/env python3
-"""Execute the Watch display adapter with isolated defaults and a complication spy.
-
-The actual settings adapter, preference store and complication cache model are used.
-The collector, display formatting and WidgetKit delivery are replaced with doubles.
-"""
-from pathlib import Path
-import subprocess
-import re
-from swift_test_runner import run_swift, test_directory
-
-addon = Path(__file__).resolve().parents[1]
-repo = addon.parent
-host_path = 'xDrip Watch App/DataModels/WatchStateModel.swift'
-host = (repo / host_path).read_text()
-# This reviewed host baseline includes the delivery/lifecycle hooks added after the
-# original preference work. Compare the whole file; no adapter-only change needs a host edit.
-expected = subprocess.check_output(['git', 'show', '58d40a4:' + host_path], cwd=repo, text=True)
-# Remove exactly the retired investigation hooks from the reviewed baseline.
-expected = re.sub(r'^ *Libre2LifecycleDiagnostics\.recordSession\([^\n]*\n(?: *details:[^\n]*\n)?', '', expected, flags=re.M)
-expected = re.sub(r'^ *recordLibreComplicationCache\([^\n]*\n', '', expected, flags=re.M)
-expected = expected.replace('    func session(_: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {\n        directLibre.historyTransferFinished(userInfoTransfer.userInfo, error: error)\n    }\n', '')
-expected = expected.replace('if userInfo[Libre2HandoffMessage.retiredIDsKey] != nil\n                || (try? Libre2HandoffMessage.decode(userInfo).kind) == .revoke {', 'if userInfo[Libre2HandoffMessage.retiredIDsKey] != nil {')
-assert host == expected, 'Host changes exceed the reviewed functional hooks and diagnostic removals'
-assert host.index('restoreDirectLibrePreferences()') < host.index('directLibre.restore()')
-assert 'processedUpdate = processStatusFromDictionary(dictionary: statusDictionary)' in host
-
-adapter = (addon / 'Watch/DataModels/WatchStateModel+DirectLibre.swift').read_text().replace(
-    'Libre2WatchPreferences()', 'Libre2WatchPreferences(defaults: testDefaults)')
-code = r'''import Foundation
+import Foundation
 let suite = "DirectLibrePreferencesProbe." + UUID().uuidString
 let testDefaults = UserDefaults(suiteName: suite)!
 extension Bundle {
@@ -60,9 +31,7 @@ final class WatchStateModel {
                                high: highLimitInMgDl, urgentHigh: urgentHighLimitInMgDl)
     }
 }
-'''
-code += adapter
-code += r'''
+/* @source:adapter */
 @main struct PreferencesProbe {
     static func main() throws {
         let cacheDefaults = UserDefaults(suiteName: Bundle.main.appGroupSuiteName)!
@@ -121,17 +90,3 @@ code += r'''
         print("PASS: existing cache migrates; relay persists limits and retains the host's original status assignments")
     }
 }
-'''
-with test_directory('direct-libre-preferences-') as work:
-    main = work / 'PreferencesProbe.swift'
-    main.write_text(code)
-    binary = work / 'preferences-tests'
-    sources = [addon / 'Shared/Managers/Libre2WatchPreferences.swift',
-               addon / 'Shared/DataModels/Libre2LocationRequest.swift',
-               addon / 'Shared/Constants/ConstantsLibre2.swift',
-               addon / 'Shared/Managers/Libre2ReadingPipeline.swift',
-               repo / 'xDrip Watch Complication/DataModels/ComplicationSharedUserDefaultsModel.swift']
-    run_swift(binary, [
-        *map(str, sources),
-        main,
-    ], flags=['-swift-version', '5'])

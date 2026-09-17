@@ -8,6 +8,7 @@ let package = Package(
     products: [.library(name: "Libre2ExperimentCore", targets: ["Libre2ExperimentCore"])],
     targets: [
         .target(name: "Libre2ExperimentCore", path: "Shared"),
-        .testTarget(name: "DirectLibreTests", dependencies: ["Libre2ExperimentCore"], path: "Tests")
+        .testTarget(name: "DirectLibreTests", dependencies: ["Libre2ExperimentCore"], path: "Tests",
+            exclude: ["Fixtures"])
     ]
 )

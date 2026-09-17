@@ -1,33 +1,4 @@
-#!/usr/bin/env python3
-"""Compare Direct Watch trends with the current phone's actual calculation methods.
 
-Extracts phone slope, conversion and Watch payload methods; only database access
-and model storage are doubled. Identical input values isolate display arithmetic
-from phone calibration/smoothing. No app preferences or repository files are written.
-"""
-from pathlib import Path
-import re
-from swift_test_runner import run_swift, test_directory
-
-addon = Path(__file__).resolve().parents[1]
-repo = addon.parent
-
-
-def method(path, declaration):
-    source = (repo / path).read_text()
-    start = source.index("    " + declaration)
-    brace = source.index("{", start)
-    depth, end = 1, brace + 1
-    while depth:
-        depth += (source[end] == "{") - (source[end] == "}")
-        end += 1
-    return source[start:end]
-
-
-reading = "xDrip/Core Data/classes/BgReading+CoreDataClass.swift"
-max_slope = re.search(r"static let maxSlopeInMinutes = \d+",
-    (repo / "xDrip/Constants/ConstantsBGGraphBuilder.swift").read_text())[0]
-code = """
 import Foundation
 final class BgReading {
     let timeStamp: Date
@@ -35,13 +6,21 @@ final class BgReading {
     var calculatedValueSlope = 0.0
     var hideSlope = false
     init(_ sample: Libre2Sample) { timeStamp = sample.timeStamp; finalValue = sample.glucoseLevelRaw }
-""" + method(reading, "func calculateSlope") + "\n" + method(reading, "public func slopeOrdinal") + "\n}\n"
-code += "enum ConstantsBGGraphBuilder { " + max_slope + " }\n"
-code += (repo / "xDrip/Constants/ConstantsBloodGlucose.swift").read_text()
-code += "\nextension Date {\n" + method("xDrip/Extensions/Date.swift", "func toMillisecondsAsDouble()") + "\n}\n"
-code += "extension Double {\n" + method("xDrip/Extensions/Double.swift", "func mgDlToMmol(mgDl:") + "\n}\n"
-code += "final class PhoneCalibrator {\n" + method("xDrip/Calibration/Protocol/Calibrator.swift", "public func findSlope") + "\n}\n"
-code += """
+/* @source:calculate_slope */
+/* @source:slope_ordinal */
+}
+enum ConstantsBGGraphBuilder { /* @source:max_slope */ }
+/* @source:glucose_constants */
+extension Date {
+/* @source:timestamp_conversion */
+}
+extension Double {
+/* @source:unit_conversion */
+}
+final class PhoneCalibrator {
+/* @source:find_slope */
+}
+
 final class UserDefaults {
     static let standard = UserDefaults()
     var bloodGlucoseUnitIsMgDl = true
@@ -62,8 +41,9 @@ final class ReadingAccessor {
 final class PhoneWatchManager {
     let bgReadingsAccessor = ReadingAccessor()
     func result() -> WatchBgReadings { currentBgReadings() }
-""" + method("xDrip/Managers/Watch/WatchManager.swift", "private func currentBgReadings()") + "\n}\n"
-code += """
+/* @source:phone_payload */
+}
+
 struct Libre2WatchPreferences {
     func receiveLimits(_ dictionary: [String: Any]) -> Int? { nil }
     func receiveUnits(_ dictionary: [String: Any]) -> Bool? { dictionary["isMgDl"] as? Bool }
@@ -75,9 +55,9 @@ final class WatchStateModel {
     var deltaValueInUserUnit = 0.0
     var libreReadingHistory: [Libre2Sample] = []
     func applyDirectLibreLimits(_ limits: Int) -> Bool { preconditionFailure("Unit-only test unexpectedly received limits") }
-""" + method(str(addon.relative_to(repo) / "Watch/DataModels/WatchStateModel+DirectLibre.swift"),
-             "func receiveDirectLibrePreferences") + "\n}\n"
-code += """
+/* @source:receive_preferences */
+}
+
 let now = Date(timeIntervalSince1970: 1_800_000_000)
 let phone = PhoneWatchManager()
 var cases = 0
@@ -93,9 +73,9 @@ func compare(_ values: [Double], gap: Double) {
         let expected = phone.result()
         let direct = Libre2ReadingPipeline.trend(from: samples, isMgDl: units)
         precondition(direct.slopeOrdinal == expected.slopeOrdinal,
-                     "Arrow differs: values=\\(values), gap=\\(gap)")
+                     "Arrow differs: values=\(values), gap=\(gap)")
         precondition(abs(direct.delta - expected.deltaValueInUserUnit) < 0.0000001,
-                     "Delta differs: values=\\(values), units=\\(units)")
+                     "Delta differs: values=\(values), units=\(units)")
         cases += 1
     }
 }
@@ -122,16 +102,4 @@ watch.directLibre.isDirect = false
 watch.deltaValueInUserUnit = 17
 precondition(watch.receiveDirectLibrePreferences(["isMgDl": false]))
 precondition(watch.deltaValueInUserUnit == 17, "Ordinary relay delta was changed")
-print("\\(cases) phone/Watch trend comparisons passed; repeated unit changes and ordinary relay guard passed.")
-"""
-
-with test_directory("direct-libre-alignment-") as work:
-    source = work / "main.swift"
-    source.write_text(code)
-    executable = work / "alignment-tests"
-    run_swift(executable, [
-        addon / "Shared/Constants/ConstantsLibre2.swift",
-        addon / "Shared/Protocol/Libre2BLEData.swift",
-        addon / "Shared/Managers/Libre2ReadingPipeline.swift",
-        source,
-    ])
+print("\(cases) phone/Watch trend comparisons passed; repeated unit changes and ordinary relay guard passed.")
