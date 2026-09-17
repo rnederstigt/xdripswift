@@ -6,6 +6,8 @@ This branch adds phone-controlled switching of a working Libre 2 connection betw
 
 See the [Direct Libre 2 guide](<xDrip Watch Direct Libre2 AddOn/README.md>) for setup, controls, limitations and contributor documentation.
 
+This add-on was implemented using OpenAI Codex, with requirements, direction and real-device testing provided by rnederstigt. The most recent model used is `gpt-6-astra`; see the guide for development attribution.
+
 ---
 
 **[Online documentation: compatibility, installation, setup and troubleshooting](https://xdrip4ios.readthedocs.io/en/latest/)**

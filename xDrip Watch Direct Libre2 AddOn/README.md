@@ -55,5 +55,7 @@ An unreachable Watch cannot be instantly disconnected by a phone command. NFC re
 
 ## Development
 
+The Direct Libre 2 add-on was implemented using OpenAI Codex, with requirements, direction and real-device testing provided by rnederstigt. The most recent model used is `gpt-6-astra` (recorded September 2026); this identifies the latest development model, not every model used throughout the project. The original xDrip4iOS app and reused protocol code retain their existing contributor attribution.
+
 - [Architecture](Docs/ARCHITECTURE.md): reading order, transaction rules and original-file hooks.
 - [Testing](Docs/TESTING.md): automated checks, current evidence and device acceptance.
