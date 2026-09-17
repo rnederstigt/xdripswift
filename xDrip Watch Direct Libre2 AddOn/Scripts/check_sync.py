@@ -45,7 +45,7 @@ def history_delivery():
 def phone_import_routing():
     path = 'xDrip/Managers/Application/RootApplicationCoordinator.swift'
     source = (repo / path).read_text()
-    baseline = subprocess.check_output(['git', 'show', '4499634896fe7e5ab0379d7076d9473f1c137161:' + path], cwd=repo, text=True)
+    baseline = subprocess.check_output(['git', 'show', '87a0e0c6528be6ec3b3cc9d332e7b8ddc457a6c0:' + path], cwd=repo, text=True)
 
     old = block(baseline, 'if newReadingCreated {')
     shared_start = source.index('    private func processStoredGlucoseData(')

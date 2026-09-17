@@ -10,7 +10,7 @@ def watch_preferences():
     host = (repo / host_path).read_text()
     # This reviewed host baseline includes the delivery/lifecycle hooks added after the
     # original preference work. Compare the whole file; no adapter-only change needs a host edit.
-    expected = subprocess.check_output(['git', 'show', '58d40a4:' + host_path], cwd=repo, text=True)
+    expected = subprocess.check_output(['git', 'show', '047151ce40d054e504daaf1e636201a926b333f1:' + host_path], cwd=repo, text=True)
     # Remove exactly the retired investigation hooks from the reviewed baseline.
     expected = re.sub(r'^ *Libre2LifecycleDiagnostics\.recordSession\([^\n]*\n(?: *details:[^\n]*\n)?', '', expected, flags=re.M)
     expected = re.sub(r'^ *recordLibreComplicationCache\([^\n]*\n', '', expected, flags=re.M)
