@@ -42,9 +42,11 @@ flowchart TD
 
 ## Collection and display
 
-Watch reconnect follows the phone's policy: retrieve a saved peripheral first, reconnect immediately after range loss and leave known-peripheral connection requests pending. Scan-discovered connections use a five-second connection timeout; explicit protocol failures use a five-second retry. There is no scan or first-reading deadline.
+Watch reconnect follows the phone's policy: retrieve a saved peripheral at startup, reuse the callback's peripheral directly after a disconnect or failed connection, and leave known-peripheral connection requests pending. Scan-discovered connections use a five-second connection timeout. Service discovery processes available results even alongside an error; only a nil service list disconnects, retaining the peripheral until its disconnect callback triggers the ordinary direct peripheral reconnect. Missing characteristics, subscription failures and unlock-write errors are logged without cancelling a connected link, matching the phone. There is no deliberate retry backoff, scan deadline or first-reading deadline. Double-tap and connection-timeout recovery resume scanning as soon as cancellation is requested; handoff release still waits for all cancelled handles to disconnect; persistence/ownership failures continue to prevent authentication. The antenna reflects the Bluetooth link, not setup success.
 
-Double tap cancels current work and restarts after confirmed disconnect; overlapping taps share that cancellation. Return or retirement supersedes restart. Late cancelled callbacks cannot authenticate or publish readings. `ConnectionState` drives the antenna independently of durable ownership; a plain change callback refreshes display without polling.
+Like the phone, cancellation first requests F002 unsubscription when the current connection has a receive characteristic, without waiting for acknowledgement. A late callback from an old peripheral cannot unsubscribe the current link.
+
+Double tap cancels current work and queues an immediate scan; overlapping taps before that scan share one restart. Advertisements from a still-disconnecting handle are ignored. Late terminal callbacks cannot clear a reused handle that is already connecting or connected. Retired handles are tracked only to preserve the release barrier if a phone return interrupts local recovery. Return or retirement supersedes restart. Late cancelled callbacks cannot authenticate or publish readings. `ConnectionState` drives the antenna independently of durable ownership; a plain change callback refreshes display without polling.
 
 The parser requires native calibration. It validates the newest sample before changing its history cache, then preserves the ported conversion, overlap and short-gap interpolation. The collector queues only the newest real measurement; interpolated graph points are display-only. Invalid glucose does not force a BLE disconnect. The original phone parser, crypto and NFC reader remain in use on iPhone.
 
@@ -87,3 +89,12 @@ Paths here are repository-relative. These are the functional hooks to inspect or
 Configuration changes comprise Watch Bluetooth/location/underwater declarations, Xcode membership, default build-location settings, ignored local build products and the root README link. The previously tracked machine-specific `.pch` artifact is removed. The phone app delegate, Watch notification controller and complication provider match the audited upstream base.
 
 Retained exceptions to ordinary behaviour: ownership blocks phone Libre operations while unresolved/direct; NFC after experimental use resets credentials; counter exhaustion blocks even ordinary authentication at its maximum; preference restoration and the underwater declaration apply in relay mode too. Queued readings may import after returning to phone. Obsolete ownership phases, revoke messages and pre-`unresolved` history journals are unsupported; rejected history files are not overwritten.
+
+
+## Optional connection capture
+
+`Shared/Managers/Libre2DiagnosticCapture.swift` owns a bounded append-only Watch event file and small atomic metadata record. `Libre2ActivityLog` forwards ordinary activity while a capture is enabled and routes explicit capture commands through its existing request key. Detailed collector events go directly to the capture; they do not fill the everyday log. Files are independent of ownership, unlock counters and glucose history.
+
+`Libre2WatchCollector` adds observation and per-attempt/reset identifiers without changing scan, cancellation, retry or authentication decisions. `Libre2WatchManager` observes Watch lifecycle/ownership notifications inside the add-on and supplies capture context. Location support only contributes its existing state. No host app delegate or complication changes are needed.
+
+`iPhone/Managers/Libre2CaptureController.swift` starts/stops/inspects captures and downloads a stopped archive in bounded, ID/offset-checked chunks over the existing activity request route. Only a complete download atomically replaces the saved phone report. The experimental Activity & recovery page owns the controls; no automatic diagnostic transfers or new background execution are introduced.

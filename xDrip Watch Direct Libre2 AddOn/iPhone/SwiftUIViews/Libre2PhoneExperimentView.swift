@@ -166,6 +166,7 @@ struct Libre2DiagnosticsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                GroupBox { Libre2CaptureView() }
                 GroupBox { Libre2ActivityLogView() }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {

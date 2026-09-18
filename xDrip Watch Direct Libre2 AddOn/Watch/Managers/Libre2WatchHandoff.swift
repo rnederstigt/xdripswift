@@ -84,11 +84,17 @@ final class Libre2WatchHandoff {
 
     func restartConnection() {
         guard owner.allowsWatchConnection else {
+            Libre2DiagnosticCapture.shared.record("BLE: Double tap ignored: owner=\(owner)")
             // A tap cannot activate Prepared or reverse a return/NFC reset.
             publishStatus(indicatorText)
             return
         }
         collector.restartConnection()
+    }
+
+    func recordCaptureSnapshot() {
+        if let collectorInstance { collectorInstance.recordCaptureSnapshot() }
+        else { Libre2DiagnosticCapture.shared.record("BLE: No collector; owner=\(owner)") }
     }
 
     func restore() {

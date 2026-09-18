@@ -11,7 +11,9 @@ A phone-controlled proof of concept for collecting native FreeStyle Libre 2 BLE 
 
 Beside the Watch reading age, the antenna is **blinking orange** while scanning/restarting, **steady orange** while connecting/waiting to retry, **green** when Bluetooth connects and **grey** when inactive/unavailable. Green may appear before the first reading; reading age indicates freshness. Blinking pauses while the app is inactive, dimmed or Reduce Motion is enabled. VoiceOver describes the state.
 
-While the Watch owns collection, double tap the large value or chart header to restart its connection. Repeated taps during cancellation share one restart; counters and readings are retained. Prepared or returning sessions cannot be activated by tapping. Outside direct mode the gesture keeps its original phone-refresh behaviour.
+Setup-error handling follows the phone: characteristic, subscription and unlock-write errors are logged without forcing a reconnect. The antenna remains green while Bluetooth is connected, even if setup did not produce glucose; check reading age separately. A missing (`nil`) service list disconnects and reconnects the same peripheral after its disconnect callback, as on the phone. Double tap can restart a connected session that is not receiving readings.
+
+While the Watch owns collection, double tap the large value or chart header to restart its connection. Repeated taps before the queued restart begins share one restart; counters and readings are retained. Double-tap and connection-timeout recovery resume scanning while cancellation finishes; returning ownership to the phone still waits for release. Prepared or returning sessions cannot be activated by tapping. Outside direct mode the gesture keeps its original phone-refresh behaviour.
 
 ## Phone synchronisation
 
@@ -43,7 +45,20 @@ The test is manual, separate from glucose alarms, and does not grant extra execu
 | Unknown/deleted sensor's readings | **Activity & recovery → Delete unresolved readings** removes only those readings after confirmation. Pending uploads and phone history remain. |
 | Wrong units or limits | Open both apps to receive the current phone settings. |
 
-The main page shows three recent phone events, expandable with **Show more**. **Activity & recovery** provides the basic log, **Load Watch activity**, export and unresolved-reading cleanup. Each device retains up to 240 connection, save and error events. Watch loading is manual and requires reachability; exports keep the newest entries within 60 KB. There is no detailed-tracing mode or complication-value log.
+The main page shows three recent phone events, expandable with **Show more**. **Activity & recovery** provides the basic log, **Load Watch activity**, export and unresolved-reading cleanup. Each device retains up to 240 connection, save and error events. Watch loading is manual and requires reachability; exports keep the newest entries within 60 KB. The separate optional connection capture below does not expand this everyday log. Complication-value tracing remains absent.
+
+
+### Capturing a swim or connection problem
+
+In **Activity & recovery → Watch connection capture**, use **Start capture** while the Watch app is reachable. Wait for the phone to confirm **Recording** before leaving it behind. Capture is local to the Watch and lasts up to **two hours, 5,000 events or 2 MB**, whichever comes first. It survives an app restart; no phone connection is required during the test.
+
+Record a few minutes of dry baseline, enable Water Lock manually, then start the swim. Note approximate water-entry, surfacing and deliberate double-tap times separately. To test a manual reset, surface, disable Water Lock, double tap the large value or chart header, then re-enable Water Lock. Leave a few minutes of dry recovery at the end. Capture does not detect submersion or control Water Lock.
+
+Afterwards, open both apps and choose **Stop & load**, then **Share saved capture**. A stopped/expired capture can be downloaded again using **Load completed capture**. Export uses checked 40 KB chunks, so it is not restricted to the short activity log's 60 KB snapshot. Failed downloads preserve the Watch file and the last complete phone export. Starting another capture asks before replacing the Watch file.
+
+The report records app/build and OS, process/run identifiers, UTC and monotonic timestamps, Bluetooth states/errors, scan/connect/cancel callbacks, subscription/unlock-write milestones, first valid readings, periodic frame counts, location status and accepted/ignored/coalesced double-tap resets. It stores no sensor credentials, raw BLE payloads, glucose values or location coordinates. It adds no radio polling, notifications, reconnects or background execution sessions. App lifecycle observations use existing notifications.
+
+Expiry is checked on the next event or command, without a wake-up timer. Capacity/storage failures are reported explicitly; events after a limit are not retained. A sudden termination can interrupt the final file append, which is flagged on restore. Gaps alone cannot distinguish suspension from lost radio reception, and a Bluetooth timeout cannot prove water was the cause. Keep the device crash report if the app terminates.
 
 Install both current companion builds. Obsolete ownership phases, full-session revoke messages and history journals without `unresolved` are unsupported. An unsupported history journal is left intact and reports a storage error; NFC recovery does not migrate it.
 

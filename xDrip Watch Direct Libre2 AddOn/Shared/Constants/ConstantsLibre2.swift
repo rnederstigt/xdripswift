@@ -17,7 +17,6 @@ enum ConstantsLibre2 {
     static let recentReadingInterval: TimeInterval = 180
     // Match BluetoothTransmitter's maxTimeToWaitForPeripheralResponse for scan-discovered connects.
     static let connectionTimeout: TimeInterval = 5
-    static let reconnectDelay: TimeInterval = 5
 
     // MARK: - Glucose conversion and validation
 

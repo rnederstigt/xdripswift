@@ -44,6 +44,10 @@ final class Libre2WatchLocationSession: NSObject, CLLocationManagerDelegate {
         return true
     }
 
+    func recordCaptureSnapshot() {
+        Libre2ActivityLog.shared.record("Location: \(status); updating=\(isUpdating) receivedFix=\(receivedLocation)")
+    }
+
     private func refresh() {
         guard preferences.backgroundLocationEnabled else {
             stop(status: Texts_DirectLibre.locationOff)

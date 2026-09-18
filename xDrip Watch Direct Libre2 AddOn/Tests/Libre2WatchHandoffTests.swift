@@ -25,6 +25,7 @@ final class Libre2WatchCollector {
     var starts = 0
     var restarts = 0
     init() { Self.last = self }
+    func recordCaptureSnapshot() {}
     func start() { starts += 1 }
     func restartConnection() { restarts += 1 }
     func stop(completion: @escaping () -> Void) { stops += 1; disconnect = completion }

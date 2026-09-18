@@ -3,6 +3,27 @@ import Foundation
 /// Shared Direct Libre strings, following the app's Texts_ convention.
 /// English defaults preserve the experimental UI until translations are supplied.
 class Texts_DirectLibre {
+    static let captureTitle = NSLocalizedString(
+        "captureTitle", tableName: filename, bundle: .main, value: "Watch connection capture", comment: "Direct Libre connection capture")
+    static let captureHelp = NSLocalizedString(
+        "captureHelp", tableName: filename, bundle: .main, value: "Record up to two hours of Bluetooth events and double-tap recovery attempts. Start before the test, then stop and load afterwards. Capture continues locally without the phone and survives app restarts. It does not keep the app running or detect water. Note your water-entry and surfacing times separately.", comment: "Direct Libre connection capture")
+    static let captureRefresh = NSLocalizedString(
+        "captureRefresh", tableName: filename, bundle: .main, value: "Refresh status", comment: "Direct Libre connection capture")
+    static let captureStart = NSLocalizedString(
+        "captureStart", tableName: filename, bundle: .main, value: "Start capture", comment: "Direct Libre connection capture")
+    static let captureStop = NSLocalizedString(
+        "captureStop", tableName: filename, bundle: .main, value: "Stop & load", comment: "Direct Libre connection capture")
+    static let captureLoad = NSLocalizedString(
+        "captureLoad", tableName: filename, bundle: .main, value: "Load completed capture", comment: "Direct Libre connection capture")
+    static let captureShare = NSLocalizedString(
+        "captureShare", tableName: filename, bundle: .main, value: "Share saved capture", comment: "Direct Libre connection capture")
+    static let captureNeedsWatch = NSLocalizedString(
+        "captureNeedsWatch", tableName: filename, bundle: .main, value: "Open the Watch app to start, stop or load. An existing capture keeps recording when the phone is unreachable.", comment: "Direct Libre connection capture")
+    static let captureReplace = NSLocalizedString(
+        "captureReplace", tableName: filename, bundle: .main, value: "Replace the Watch capture?", comment: "Direct Libre connection capture")
+    static let captureReplaceHelp = NSLocalizedString(
+        "captureReplaceHelp", tableName: filename, bundle: .main, value: "Starting another capture replaces the previous one on the Watch. Load and share it first if you need to keep it. The last completed download remains on this iPhone until another download succeeds.", comment: "Direct Libre connection capture")
+
     private static let filename = "DirectLibre"
 
     // MARK: - Experimental page

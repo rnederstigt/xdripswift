@@ -30,6 +30,7 @@ final class Libre2ActivityLog {
     }
 
     func record(_ message: String, now: Date = Date()) {
+        Libre2DiagnosticCapture.shared.record("Activity: " + message)
         // Diagnostics stay dormant outside experiment/page use.
         guard isPageVisible || shouldRecord() else { return }
         guard !message.isEmpty, entries.last?.message != message else { return }
@@ -43,6 +44,10 @@ final class Libre2ActivityLog {
     @discardableResult
     func receive(_ dictionary: [String: Any], reply: ([String: Any]) -> Void) -> Bool {
         guard dictionary[Self.requestKey] != nil else { return false }
+        if dictionary[Libre2DiagnosticCapture.commandKey] != nil {
+            Libre2DiagnosticCapture.shared.receive(dictionary, reply: reply)
+            return true
+        }
         do {
             guard dictionary[Self.requestKey] as? Bool == true else { throw Libre2HistoryError.invalidBatch }
             var recent = entries

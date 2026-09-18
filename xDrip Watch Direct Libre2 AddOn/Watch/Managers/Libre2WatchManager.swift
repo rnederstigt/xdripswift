@@ -1,4 +1,5 @@
 import Foundation
+import WatchKit
 
 /// The Watch host supplies its existing history and accepts display updates.
 protocol Libre2WatchDisplay: AnyObject {
@@ -13,6 +14,7 @@ protocol Libre2WatchDisplay: AnyObject {
 /// One entry point for Watch messages, source selection and reading conversion.
 /// The handoff controller continues to own the collector and persisted transaction.
 final class Libre2WatchManager {
+    private var captureObservers: [NSObjectProtocol] = []
     private weak var display: Libre2WatchDisplay?
     private let handoff = Libre2WatchHandoff()
     private let historySync = Libre2WatchHistorySync()
@@ -21,6 +23,7 @@ final class Libre2WatchManager {
 
     init(display: Libre2WatchDisplay) {
         self.display = display
+        configureCapture()
         handoff.onCollectedReading = { [weak self] sample, sensorMinute, session in
             self?.historySync.collect(sample, sensorMinute: sensorMinute, session: session)
         }
@@ -29,6 +32,38 @@ final class Libre2WatchManager {
         }
         handoff.onReadings = { [weak self] samples, sensorAge in
             self?.acceptDirectReadings(samples, sensorAge: sensorAge)
+        }
+    }
+
+    deinit { captureObservers.forEach(NotificationCenter.default.removeObserver) }
+
+    private func configureCapture() {
+        let capture = Libre2DiagnosticCapture.shared
+        capture.context = {
+            let preferences = Libre2WatchPreferences()
+            let state = WKApplication.shared().applicationState
+            let name = state == .active ? "active" : state == .inactive ? "inactive" : "background"
+            return "appState=\(name)"
+                + " owner=\(Libre2SessionStore.shared.snapshot.owner)"
+                + " locationEnabled=\(preferences.backgroundLocationEnabled) accuracy=\(preferences.backgroundLocationAccuracy.rawValue)"
+        }
+        capture.onStart = { [weak self] in
+            let bundle = Bundle.main
+            capture.record("Watch build=\(bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "?")"
+                + " (\(bundle.object(forInfoDictionaryKey: "CFBundleVersion") ?? "?")) OS=\(ProcessInfo.processInfo.operatingSystemVersionString)")
+            self?.handoff.recordCaptureSnapshot()
+            self?.locationSession.recordCaptureSnapshot()
+        }
+        capture.record("Watch manager initialized; new process/run IDs distinguish relaunch from silence")
+        for (name, label) in [
+            (WKExtension.applicationDidBecomeActiveNotification, "App became active"),
+            (WKExtension.applicationWillResignActiveNotification, "App will resign active"),
+            (WKExtension.applicationDidEnterBackgroundNotification, "App entered background"),
+            (Libre2SessionStore.didChange, "Ownership/session changed")
+        ] {
+            captureObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+                capture.record(label)
+            })
         }
     }
 
@@ -51,6 +86,10 @@ final class Libre2WatchManager {
     func receive(_ dictionary: [String: Any], reply: @escaping ([String: Any]) -> Void) {
         Libre2WatchConnectivityTasks.shared.receive {
             if dictionary[Libre2ActivityLog.requestKey] != nil {
+                if dictionary[Libre2DiagnosticCapture.commandKey] as? String == "stop" {
+                    self.handoff.recordCaptureSnapshot()
+                    self.locationSession.recordCaptureSnapshot()
+                }
                 Libre2ActivityLog.shared.receive(dictionary, reply: reply)
                 return
             }

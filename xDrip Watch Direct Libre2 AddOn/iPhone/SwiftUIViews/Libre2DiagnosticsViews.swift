@@ -207,3 +207,62 @@ struct Libre2RecentActivityView: View {
         }
     }
 }
+
+/// The complete connection capture is separate from the short everyday activity list.
+struct Libre2CaptureView: View {
+    @StateObject private var capture = Libre2CaptureController()
+    @ObservedObject private var handoff = Libre2PhoneHandoff.shared
+    @State private var confirmReplacement = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Texts_DirectLibre.captureTitle).font(.headline)
+            Text(Texts_DirectLibre.captureHelp).font(.caption).foregroundColor(.secondary)
+            Text(capture.description).font(.caption)
+            if let error = capture.error {
+                Text(error).font(.caption).foregroundColor(.red)
+            }
+            if capture.isBusy { ProgressView() }
+            HStack {
+                Button(Texts_DirectLibre.captureRefresh) { capture.refresh() }
+                Spacer()
+                if capture.status?.isRecording == true {
+                    Button(Texts_DirectLibre.captureStop) { capture.stopAndLoad() }
+                } else {
+                    Button(Texts_DirectLibre.captureStart) {
+                        if capture.status != nil { confirmReplacement = true }
+                        else { capture.start() }
+                    }
+                    .disabled(!capture.hasInspected)
+                }
+            }
+            .disabled(capture.isBusy || !handoff.reachable)
+            HStack {
+                Button(Texts_DirectLibre.captureLoad) { capture.stopAndLoad() }
+                    .disabled(capture.isBusy || !handoff.reachable || capture.status == nil || capture.status?.isRecording == true)
+                Spacer()
+                if let reportURL = capture.reportURL {
+                    ShareLink(item: reportURL) {
+                        Label(Texts_DirectLibre.captureShare, systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+            if let savedAt = capture.savedAt {
+                Text("Saved on iPhone: \(savedAt.formatted(date: .abbreviated, time: .standard))")
+                    .font(.caption2).foregroundColor(.secondary)
+            }
+            if !handoff.reachable {
+                Text(Texts_DirectLibre.captureNeedsWatch).font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { if handoff.reachable { capture.refresh() } }
+        .alert(Texts_DirectLibre.captureReplace, isPresented: $confirmReplacement) {
+            Button(Texts_Common.Cancel, role: .cancel) {}
+            Button(Texts_DirectLibre.captureStart, role: .destructive) { capture.start() }
+        } message: {
+            Text(Texts_DirectLibre.captureReplaceHelp)
+        }
+    }
+}
